@@ -1,0 +1,415 @@
+<template>
+  <Card>
+    <template #title>Materiales</template>
+    <template #content>
+      <!-- Product search row -->
+      <div class="mb-3 flex items-center gap-2">
+        <AutoComplete
+          v-model="searchQuery"
+          :suggestions="productResults"
+          @complete="searchProducts"
+          @option-select="addProduct"
+          optionLabel="label"
+          class="flex-1"
+          placeholder="Buscar producto para agregar..."
+          :disabled="adding"
+          :forceSelection="false"
+        />
+      </div>
+
+      <!-- Materials table -->
+      <DataTable :value="materials" size="small" stripedRows class="text-xs">
+        <Column field="product.name" header="Producto">
+          <template #body="s">
+            <div :class="{ 'line-through opacity-60': s.data.deleted_at }">
+              {{ s.data.product?.name || 'Producto #'+s.data.product_id }}
+            </div>
+          </template>
+        </Column>
+        <Column header="Estimado">
+          <template #body="s">
+            <template v-if="s.data.deleted_at">{{ s.data.estimated_quantity }}</template>
+            <div v-else class="inline-flex items-center gap-1">
+              <InputNumber
+                v-if="editingRow === s.data.id"
+                v-model="s.data.estimated_quantity"
+                :min="0" :step="0.01" size="small" style="width: 90px"
+                @keydown.enter="saveInline(s.data)"
+                @keydown.escape="cancelInline()"
+                autofocus
+              />
+              <span v-else
+                :class="isDraft ? 'text-blue-600 cursor-pointer hover:underline' : ''"
+                @dblclick="startInline(s.data, 'estimated_quantity')"
+              >{{ s.data.estimated_quantity }}</span>
+            </div>
+          </template>
+        </Column>
+        <Column header="Real">
+          <template #body="s">
+            <template v-if="s.data.deleted_at"><span class="line-through opacity-60">{{ s.data.real_quantity ?? '-' }}</span></template>
+            <div v-else class="inline-flex items-center gap-1">
+              <InputNumber
+                v-if="editingRow === s.data.id"
+                v-model="s.data.real_quantity"
+                :min="0" :step="0.01" size="small" style="width: 90px"
+                @keydown.enter="saveInline(s.data)"
+                @keydown.escape="cancelInline()"
+              />
+              <span v-else
+                class="text-green-600 cursor-pointer hover:underline"
+                @dblclick="startInline(s.data, 'real_quantity')"
+              >{{ s.data.real_quantity ?? '-' }}</span>
+            </div>
+          </template>
+        </Column>
+        <Column header="Dif">
+          <template #body="s">
+            <span v-if="s.data.deleted_at" class="line-through opacity-60">-</span>
+            <span v-else :class="diffClass(s.data)">{{ diffText(s.data) }}</span>
+          </template>
+        </Column>
+        <Column header="Desp">
+          <template #body="s">
+            <template v-if="s.data.deleted_at"><span class="line-through opacity-60">{{ s.data.waste_quantity || '-' }}</span></template>
+            <div v-else class="inline-flex items-center gap-1">
+              <InputNumber
+                v-if="editingRow === s.data.id"
+                v-model="s.data.waste_quantity"
+                :min="0" :step="0.01" size="small" style="width: 90px"
+                @keydown.enter="saveInline(s.data)"
+                @keydown.escape="cancelInline()"
+              />
+              <span v-else
+                class="cursor-pointer hover:underline"
+                @dblclick="startInline(s.data, 'waste_quantity')"
+              >{{ s.data.waste_quantity || '-' }}</span>
+            </div>
+          </template>
+        </Column>
+        <Column header="Costo U.">
+          <template #body="s">
+            <template v-if="s.data.deleted_at"><span class="line-through opacity-60">${{ Number(s.data.estimated_unit_cost || 0).toFixed(2) }}</span></template>
+            <div v-else class="inline-flex items-center gap-1">
+              <InputNumber
+                v-if="editingRow === s.data.id"
+                v-model="s.data.estimated_unit_cost"
+                :min="0" :step="0.01" size="small" style="width: 100px" :minFractionDigits="2"
+                @keydown.enter="saveInline(s.data)"
+                @keydown.escape="cancelInline()"
+              />
+              <span v-else
+                :class="isDraft ? 'cursor-pointer hover:underline' : ''"
+                @dblclick="startInline(s.data, 'estimated_unit_cost')"
+              >${{ Number(s.data.estimated_unit_cost || 0).toFixed(2) }}</span>
+            </div>
+          </template>
+        </Column>
+        <Column field="notes" header="Notas">
+          <template #body="s">
+            <div :class="{ 'line-through opacity-60': s.data.deleted_at }">{{ s.data.notes || '-' }}</div>
+          </template>
+        </Column>
+        <Column header="Acciones" style="width:80px">
+          <template #body="s">
+            <div class="flex gap-1">
+              <Button v-if="s.data.deleted_at && !isDraft"
+                icon="pi pi-undo" text rounded size="small" severity="info"
+                @click="restoreItem(s.data)" v-tooltip.left="'Reincorporar'"
+              />
+              <div v-if="!s.data.deleted_at" class="flex gap-1">
+                <Button v-if="editingRow !== s.data.id"
+                  icon="pi pi-check-circle" text rounded size="small" severity="success"
+                  @click="saveInline(s.data)" v-tooltip.left="'Guardar cambios'"
+                />
+                <Button v-if="editingRow === s.data.id"
+                  icon="pi pi-times" text rounded size="small"
+                  @click="cancelInline()" v-tooltip.left="'Cancelar'"
+                />
+                <Button
+                  :icon="isDraft ? 'pi pi-trash' : 'pi pi-ban'"
+                  text rounded size="small" severity="danger"
+                  @click="deleteItem(s.data)" v-tooltip.left="isDraft ? 'Eliminar' : 'Deshabilitar'"
+                />
+              </div>
+            </div>
+          </template>
+        </Column>
+      </DataTable>
+
+      <div v-if="!materials.length" class="text-gray-400 text-sm py-2">Sin materiales registrados</div>
+
+      <!-- Audit log timeline -->
+      <div v-if="auditLogs.length" class="mt-4 border-t pt-3">
+        <h4 class="text-xs font-semibold text-gray-600 mb-2">Historial de cambios</h4>
+        <div class="space-y-1.5 max-h-48 overflow-y-auto">
+          <div v-for="log in auditLogs" :key="log.id" class="flex items-start gap-2 text-xs">
+            <div class="w-2 h-2 rounded-full mt-1 shrink-0"
+              :style="{ backgroundColor: log.status?.color || '#6b7280' }"
+            />
+            <div class="flex-1 min-w-0">
+              <span class="text-gray-500 text-[10px]">{{ formatDateTime(log.created_at) }}</span>
+              <div class="text-gray-700">{{ auditLogText(log) }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </Card>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import api from '@/api/client'
+import Card from 'primevue/card'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Button from 'primevue/button'
+import InputNumber from 'primevue/inputnumber'
+import AutoComplete from 'primevue/autocomplete'
+
+interface MaterialItem {
+  id: number
+  product_id: number
+  product?: { id: number; name: string; code: string; unit: string }
+  estimated_quantity: number
+  real_quantity: number | null
+  waste_quantity: number
+  estimated_location_id: number | null
+  real_location_id: number | null
+  estimated_unit_cost: number
+  real_unit_cost: number
+  notes: string | null
+  deleted_at: string | null
+}
+
+interface AuditLog {
+  id: number
+  work_order_material_id: number
+  field: string
+  old_value: number | null
+  new_value: number | null
+  old_text: string | null
+  new_text: string | null
+  material?: { product?: { name: string } }
+  status?: { id: number; name: string; color: string }
+  changed_by?: { id: number; name: string }
+  created_at: string
+}
+
+const props = defineProps<{
+  workOrderId: number
+  isDraft: boolean
+  statusId?: number | null
+  statusName: string
+  fullWidth?: boolean
+}>()
+
+const emit = defineEmits<{
+  saved: []
+}>()
+
+const materials = ref<MaterialItem[]>([])
+const auditLogs = ref<AuditLog[]>([])
+const locations = ref<{ id: number; name: string }[]>([])
+const loading = ref(false)
+const adding = ref(false)
+
+// Inline editing
+const editingRow = ref<number | null>(null)
+const editBackup = ref<MaterialItem | null>(null)
+
+// Product search
+const searchQuery = ref('')
+const productResults = ref<{ label: string; doc: string; id: number }[]>([])
+
+async function fetchData() {
+  loading.value = true
+  try {
+    const [matRes, logRes] = await Promise.all([
+      api.get(`/work-orders/${props.workOrderId}/materials`),
+      api.get(`/work-orders/${props.workOrderId}/material-audit-logs`),
+    ])
+    const raw = matRes.data.data || matRes.data || []
+    materials.value = Array.isArray(raw) ? [...raw] : []
+    const logRaw = logRes.data.data || logRes.data || []
+    auditLogs.value = Array.isArray(logRaw) ? [...logRaw] : []
+  } catch (e) {
+    console.error('Failed to load materials', e)
+    alert('Error al cargar materiales: ' + (e?.response?.status || e?.message || e))
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchLocations() {
+  try {
+    const res = await api.get('/locations')
+    const raw = res.data.data || res.data || []
+    locations.value = Array.isArray(raw) ? raw : (raw.data || [])
+  } catch { /* ignore */ }
+}
+
+async function searchProducts(e: { query: string }) {
+  try {
+    const res = await api.get(`/products?search=${encodeURIComponent(e.query)}&limit=10`)
+    const raw = res.data.data || res.data || []
+    const items = Array.isArray(raw) ? raw : (raw.data || [])
+    productResults.value = items.map((p: any) => ({
+      label: `${p.code || p.name} - ${p.name}`,
+      doc: p.unit || '',
+      id: p.id,
+    }))
+  } catch { /* ignore */ }
+}
+
+async function addProduct(e: any) {
+  const productId = e?.value?.id || e?.id || e?.value
+  if (!productId) {
+    console.warn('addProduct: no id found in event', e)
+    return
+  }
+  adding.value = true
+  try {
+    const res = await api.post(`/work-orders/${props.workOrderId}/materials`, {
+      product_id: productId,
+      estimated_quantity: 1,
+      estimated_unit_cost: 0,
+    })
+    console.log('Material added:', res.data)
+    searchQuery.value = ''
+    productResults.value = []
+    await fetchData()
+    console.log('Materials after reload:', materials.value.length)
+  } catch (err: any) {
+    alert(err.response?.data?.message || 'Error al agregar material')
+  } finally {
+    adding.value = false
+  }
+}
+
+function startInline(item: MaterialItem, field: string) {
+  if (!props.isDraft && field !== 'real_quantity' && field !== 'waste_quantity') return
+  editingRow.value = item.id
+  editBackup.value = { ...item }
+}
+
+function cancelInline() {
+  if (editingRow.value && editBackup.value) {
+    const idx = materials.value.findIndex(m => m.id === editingRow.value)
+    if (idx !== -1) {
+      materials.value[idx] = { ...editBackup.value }
+    }
+  }
+  editingRow.value = null
+  editBackup.value = null
+}
+
+async function saveInline(item: MaterialItem) {
+  editingRow.value = null
+  editBackup.value = null
+  try {
+    await api.put(`/work-orders/${props.workOrderId}/materials/${item.id}`, {
+      estimated_quantity: item.estimated_quantity,
+      real_quantity: item.real_quantity,
+      waste_quantity: item.waste_quantity,
+      estimated_unit_cost: item.estimated_unit_cost,
+    })
+    emit('saved')
+  } catch (e: any) {
+    alert(e.response?.data?.message || 'Error al guardar')
+  }
+}
+
+async function deleteItem(item: MaterialItem) {
+  if (!confirm(props.isDraft ? '¿Eliminar material?' : '¿Deshabilitar material? (se marcará como eliminado)')) return
+  try {
+    await api.delete(`/work-orders/${props.workOrderId}/materials/${item.id}`)
+    fetchData()
+  } catch (e: any) {
+    alert(e.response?.data?.message || 'Error al eliminar')
+  }
+}
+
+async function restoreItem(item: MaterialItem) {
+  if (!confirm('¿Reincorporar este material?')) return
+  try {
+    await api.post(`/work-orders/${props.workOrderId}/materials/${item.id}/restore`)
+    fetchData()
+  } catch (e: any) {
+    alert(e.response?.data?.message || 'Error al reincorporar')
+  }
+}
+
+function diffText(item: MaterialItem): string {
+  if (item.real_quantity === null) return '-'
+  const diff = item.real_quantity - item.estimated_quantity
+  const sign = diff >= 0 ? '+' : ''
+  return `${sign}${diff.toFixed(2)}`
+}
+
+function diffClass(item: MaterialItem): string {
+  if (item.real_quantity === null) return ''
+  const diff = item.real_quantity - item.estimated_quantity
+  const tolerance = item.estimated_quantity * 0.1
+  if (Math.abs(diff) <= tolerance) return 'text-green-600'
+  if (diff > 0) return 'text-amber-600 font-semibold'
+  return 'text-red-600 font-semibold'
+}
+
+function formatDateTime(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function auditLogText(log: AuditLog): string {
+  const productName = log.material?.product?.name || `Material #${log.work_order_material_id}`
+  const user = log.changed_by?.name || 'Sistema'
+
+  const fieldLabels: Record<string, string> = {
+    estimated_quantity: 'Cantidad estimada',
+    real_quantity: 'Cantidad real',
+    waste_quantity: 'Desperdicio',
+    deleted: 'Eliminado',
+    restored: 'Reincorporado',
+    created: 'Agregado',
+    notes: 'Notas',
+    estimated_location_id: 'Ubicación estimada',
+    real_location_id: 'Ubicación real',
+    estimated_unit_cost: 'Costo unitario (est.)',
+    real_unit_cost: 'Costo unitario (real)',
+    product_id: 'Producto',
+  }
+
+  const fieldLabel = fieldLabels[log.field] || log.field
+
+  switch (log.field) {
+    case 'created':
+      return `${user} agregó ${productName} (est.: ${log.new_value})`
+    case 'deleted':
+      return `${user} eliminó ${productName}`
+    case 'restored':
+      return `${user} reincorporó ${productName}`
+    case 'estimated_quantity':
+    case 'real_quantity':
+    case 'waste_quantity':
+    case 'estimated_unit_cost':
+    case 'real_unit_cost':
+      return `${user} cambió ${fieldLabel} de ${productName}: ${log.old_value ?? '-'} → ${log.new_value ?? '-'}`
+    default:
+      return `${user} modificó ${fieldLabel} de ${productName}`
+  }
+}
+
+onMounted(() => {
+  fetchData()
+  fetchLocations()
+})
+</script>
+
+<style scoped>
+.line-through {
+  text-decoration: line-through;
+}
+</style>

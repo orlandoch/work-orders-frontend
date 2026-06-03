@@ -1,0 +1,27 @@
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import PrimeVue from 'primevue/config'
+import Aura from '@primevue/themes/aura'
+import ToastService from 'primevue/toastservice'
+import ConfirmationService from 'primevue/confirmationservice'
+import Tooltip from 'primevue/tooltip'
+import App from './App.vue'
+import router from './router'
+import dayjs from 'dayjs'
+import './style.css'
+
+const app = createApp(App)
+
+app.config.globalProperties.$dayjs = dayjs
+app.use(createPinia())
+app.use(PrimeVue, {
+    theme: {
+        preset: Aura,
+        options: { darkModeSelector: '.p-dark' }
+    }
+})
+app.use(ToastService)
+app.use(ConfirmationService)
+app.directive('tooltip', Tooltip)
+app.use(router)
+app.mount('#app')
