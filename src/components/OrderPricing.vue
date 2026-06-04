@@ -60,6 +60,47 @@
         Ingrese líneas de factura manual. El total debe coincidir con <strong>${{ formatMoney(targetTotal) }}</strong>.
       </Message>
 
+      <!-- Item groups (agrupación por WorkOrderItem) -->
+      <div v-if="billingMode === 'product_list' && pricingData.item_groups && pricingData.item_groups.length > 1" class="mb-3">
+        <Accordion :activeIndex="0">
+          <AccordionTab v-for="(group, gi) in pricingData.item_groups" :key="group.item_id || gi">
+            <template #header>
+              <div class="flex align-items-center justify-content-between w-full pr-3">
+                <div class="flex align-items-center gap-2">
+                  <i class="pi pi-tag text-primary text-sm" />
+                  <span class="font-medium text-sm">{{ group.description }}</span>
+                  <Chip v-if="group.quantity" :label="`× ${formatQty(group.quantity)} ${group.unit || ''}`" class="text-xs" />
+                </div>
+                <span class="font-semibold text-primary text-sm">${{ formatMoney(group.subtotal || 0) }}</span>
+              </div>
+            </template>
+            <div class="grid">
+              <div v-for="(line, li) in group.lines" :key="line.mat_id || line.mu_id || li" class="col-12 flex align-items-center justify-content-between py-1 border-bottom-1 border-50">
+                <div class="flex align-items-center gap-2">
+                  <i :class="line.type === 'machine' ? 'pi pi-cog text-color-secondary text-xs' : 'pi pi-box text-color-secondary text-xs'"></i>
+                  <span class="text-sm">
+                    {{ line.description }}
+                    <span class="text-color-secondary text-xs">
+                      × {{ formatQty(line.quantity) }} @ ${{ formatMoney(line.unit_price) }}
+                    </span>
+                  </span>
+                </div>
+                <span class="text-sm font-medium">${{ formatMoney(line.total || 0) }}</span>
+              </div>
+            </div>
+          </AccordionTab>
+        </Accordion>
+      </div>
+
+      <!-- Single item (1 group) compact summary -->
+      <div v-else-if="billingMode === 'product_list' && pricingData.item_groups && pricingData.item_groups.length === 1" class="mb-3 text-sm text-color-secondary">
+        <div class="flex align-items-center gap-2 p-2 border-round surface-ground">
+          <i class="pi pi-tag text-primary" />
+          <span>{{ pricingData.item_groups[0].description }}</span>
+          <Chip v-if="pricingData.item_groups[0].quantity" :label="`× ${formatQty(pricingData.item_groups[0].quantity)} ${pricingData.item_groups[0].unit || ''}`" class="text-xs" />
+        </div>
+      </div>
+
       <!-- UNIFIED ITEMS TABLE (line_items mode: from order, manual mode: from invoice lines) -->
       <div v-if="billingMode === 'product_list'" class="hidden lg:block">
         <DataTable scrollable scrollHeight="flex" :value="combinedItems" class="p-datatable-sm" stripedRows>
@@ -429,6 +470,8 @@
 import { ref, computed, onMounted } from 'vue'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
+import Accordion from 'primevue/accordion'
+import AccordionTab from 'primevue/accordiontab'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Card from 'primevue/card'

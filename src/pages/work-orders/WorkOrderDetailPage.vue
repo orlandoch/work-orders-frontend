@@ -150,6 +150,9 @@
   <!-- Status Timeline -->
   <WorkOrderTimeline :workOrderId="order.id" />
 
+  <!-- Ítems de la orden (agrupa materiales + máquinas) -->
+  <OrderItems :workOrderId="order.id" />
+
   <!-- Pricing -->
   <OrderPricing :workOrderId="order.id" class="mb-3" />
 
@@ -398,6 +401,7 @@ import { useToast } from 'primevue/usetoast'
 import type { WorkOrderResponse, WorkOrderStatus } from '@/composables/workOrderTypes'
 import WorkOrderTimeline from '@/components/WorkOrderTimeline.vue'
 import OrderPricing from '@/components/OrderPricing.vue'
+import OrderItems from '@/components/OrderItems.vue'
 import InputNumber from 'primevue/inputnumber'
 import AutoComplete from 'primevue/autocomplete'
 import Select from 'primevue/select'
