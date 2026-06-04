@@ -272,26 +272,32 @@
       </Accordion>
 
       <!-- Nuevo ítem Dialog -->
-      <Dialog v-model:visible="newItemDialog" header="Nuevo ítem de orden" modal :closable="false" style="width:400px">
-        <div class="flex flex-column gap-3">
+      <Dialog v-model:visible="newItemDialog" header="Nuevo ítem" modal :closable="false"
+        :breakpoints="{'767px': '95vw'}" style="width:500px">
+        <div class="flex flex-column gap-3 p-fluid">
           <div>
-            <label class="block text-sm font-medium mb-1">Descripción</label>
-            <InputText v-model="newItemDesc" class="w-full" placeholder="Ej: Letrero luminoso 2x1" />
+            <label class="block text-sm font-medium mb-1">Descripción *</label>
+            <InputText v-model="newItemDesc" placeholder="Ej: Letrero luminoso 2x1"
+              :class="{'p-invalid': submitted && !newItemDesc.trim()}"
+              @keyup.enter="createItem" />
+            <small v-if="submitted && !newItemDesc.trim()" class="p-error block mt-1">La descripción es requerida</small>
           </div>
           <div class="grid">
-            <div class="col-6">
+            <div class="col-12 sm:col-6">
               <label class="block text-sm font-medium mb-1">Cantidad</label>
-              <InputNumber v-model="newItemQty" :min="1" class="w-full" />
+              <InputNumber v-model="newItemQty" :min="0.01" :step="1" :maxFractionDigits="2" />
             </div>
-            <div class="col-6">
+            <div class="col-12 sm:col-6">
               <label class="block text-sm font-medium mb-1">Unidad</label>
-              <InputText v-model="newItemUnit" class="w-full" placeholder="u" />
+              <InputText v-model="newItemUnit" placeholder="u" />
             </div>
           </div>
         </div>
         <template #footer>
-          <Button label="Cancelar" icon="pi pi-times" text severity="secondary" @click="closeNewItemDialog" />
-          <Button label="Crear" icon="pi pi-check" @click="createItem" :loading="savingNewItem" />
+          <div class="flex gap-2 justify-content-end">
+            <Button label="Cancelar" icon="pi pi-times" text severity="secondary" @click="closeNewItemDialog" />
+            <Button label="Crear" icon="pi pi-check" @click="createItem" :loading="savingNewItem" />
+          </div>
         </template>
       </Dialog>
 
@@ -375,7 +381,9 @@ const props = defineProps<{ workOrderId: number | string }>()
 const emit = defineEmits<{ (e: 'updated'): void }>()
 
 import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
 const confirm = useConfirm()
+const toast = useToast()
 
 // ── State ──
 const items = ref<any[]>([])
@@ -390,6 +398,7 @@ const newItemDesc = ref('')
 const newItemQty = ref(1)
 const newItemUnit = ref('u')
 const savingNewItem = ref(false)
+const submitted = ref(false)
 
 // Material mobile edit dialog
 const matEditDialog = ref(false)
@@ -451,6 +460,7 @@ function showNewItemDialog() {
   newItemDesc.value = ''
   newItemQty.value = 1
   newItemUnit.value = 'u'
+  submitted.value = false
   newItemDialog.value = true
 }
 
@@ -459,7 +469,11 @@ function closeNewItemDialog() {
 }
 
 async function createItem() {
-  if (!newItemDesc.value.trim()) return
+  submitted.value = true
+  if (!newItemDesc.value.trim()) {
+    toast.add({ severity: 'warn', summary: 'Validación', detail: 'Escribe una descripción para el ítem', life: 3000 })
+    return
+  }
   savingNewItem.value = true
   try {
     const res = await api.post(`/work-orders/${props.workOrderId}/items`, {
@@ -473,9 +487,11 @@ async function createItem() {
       activeIndices.value = [...activeIndices.value, lastIdx]
     }
     newItemDialog.value = false
+    toast.add({ severity: 'success', summary: 'Ítem creado', detail: newItemDesc.value.trim(), life: 3000 })
     emit('updated')
   } catch (e: any) {
-    console.error('Error creating item:', e)
+    const msg = e.response?.data?.message || e.message || 'Error al crear ítem'
+    toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   } finally {
     savingNewItem.value = false
   }
@@ -489,9 +505,11 @@ async function saveItemHeader(item: any) {
       quantity: item.quantity,
       unit: item.unit,
     })
+    toast.add({ severity: 'success', summary: 'Guardado', detail: 'Cabecera del ítem actualizada', life: 2000 })
     emit('updated')
   } catch (e: any) {
-    console.error('Error saving item header:', e)
+    const msg = e.response?.data?.message || e.message || 'Error al guardar'
+    toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   }
 }
 
@@ -552,10 +570,10 @@ async function addMaterial(item: any, productId: number) {
     // Refresh suggestion list after add
     matSuggestions.value[item.id] = (matSuggestions.value[item.id] || []).filter((s: any) => s.value !== productId)
     emit('updated')
+    toast.add({ severity: 'success', summary: 'Material agregado', detail: product.name, life: 2000 })
   } catch (e: any) {
-    if (e.response?.data?.message) {
-      console.warn(e.response.data.message)
-    }
+    const msg = e.response?.data?.message || e.message || 'Error al agregar material'
+    toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   } finally {
     item._addingMat = false
   }
@@ -576,8 +594,10 @@ async function saveMaterialInline(item: any, mat: any) {
       notes: mat.notes,
     })
     emit('updated')
+    toast.add({ severity: 'success', summary: 'Material actualizado', life: 2000 })
   } catch (e: any) {
-    console.error('Error saving material:', e)
+    const msg = e.response?.data?.message || e.message || 'Error al guardar material'
+    toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   }
 }
 
@@ -592,9 +612,11 @@ function deleteMaterial(item: any, mat: any) {
         await api.delete(`/work-orders/${props.workOrderId}/materials/${mat.id}`)
         const idx = item._materials.indexOf(mat)
         if (idx !== -1) item._materials.splice(idx, 1)
+        toast.add({ severity: 'success', summary: 'Material eliminado', life: 2000 })
         emit('updated')
       } catch (e: any) {
-        console.error('Error deleting material:', e)
+        const msg = e.response?.data?.message || e.message || 'Error al eliminar material'
+        toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
       }
     },
   })
@@ -624,9 +646,11 @@ async function saveMatEdit() {
       Object.assign(targetMat, mat)
     }
     matEditDialog.value = false
+    toast.add({ severity: 'success', summary: 'Material actualizado', life: 2000 })
     emit('updated')
   } catch (e: any) {
-    console.error('Error saving material in dialog:', e)
+    const msg = e.response?.data?.message || e.message || 'Error al guardar material'
+    toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   } finally {
     matEditSaving.value = false
   }
@@ -666,10 +690,10 @@ async function addMachine(item: any, machineId: number) {
     item._machine_usages.push(newMu)
     machSuggestions.value[item.id] = (machSuggestions.value[item.id] || []).filter((s: any) => s.value !== machineId)
     emit('updated')
+    toast.add({ severity: 'success', summary: 'Máquina agregada', detail: machineObj.name, life: 2000 })
   } catch (e: any) {
-    if (e.response?.data?.message) {
-      console.warn(e.response.data.message)
-    }
+    const msg = e.response?.data?.message || e.message || 'Error al agregar máquina'
+    toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   } finally {
     item._addingMach = false
   }
@@ -689,8 +713,10 @@ async function saveMachineInline(item: any, mu: any) {
       description: mu.description,
     })
     emit('updated')
+    toast.add({ severity: 'success', summary: 'Máquina actualizada', life: 2000 })
   } catch (e: any) {
-    console.error('Error saving machine:', e)
+    const msg = e.response?.data?.message || e.message || 'Error al guardar máquina'
+    toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   }
 }
 
@@ -705,9 +731,11 @@ function deleteMachine(item: any, mu: any) {
         await api.delete(`/work-orders/${props.workOrderId}/machine-usages/${mu.id}`)
         const idx = item._machine_usages.indexOf(mu)
         if (idx !== -1) item._machine_usages.splice(idx, 1)
+        toast.add({ severity: 'success', summary: 'Máquina eliminada', life: 2000 })
         emit('updated')
       } catch (e: any) {
-        console.error('Error deleting machine:', e)
+        const msg = e.response?.data?.message || e.message || 'Error al eliminar máquina'
+        toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
       }
     },
   })
@@ -733,9 +761,11 @@ async function saveMachEdit() {
     const targetMu = machEditParentItem._machine_usages.find((m: any) => m.id === mu.id)
     if (targetMu) Object.assign(targetMu, mu)
     machEditDialog.value = false
+    toast.add({ severity: 'success', summary: 'Máquina actualizada', life: 2000 })
     emit('updated')
   } catch (e: any) {
-    console.error('Error saving machine in dialog:', e)
+    const msg = e.response?.data?.message || e.message || 'Error al guardar máquina'
+    toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   } finally {
     machEditSaving.value = false
   }
