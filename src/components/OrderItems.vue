@@ -2,583 +2,759 @@
   <Card class="mb-3">
     <template #title>
       <div class="flex align-items-center justify-content-between flex-wrap gap-2">
-        <div class="flex align-items-center gap-2">
-          <i class="pi pi-list-check text-color-secondary" />
-          <span>Ítems de la orden</span>
-        </div>
-        <Button
-          label="Agregar ítem"
-          icon="pi pi-plus"
-          size="small"
-          severity="secondary"
-          @click="showAddItemDialog = true"
-        />
+        <span>Ítems de orden</span>
+        <Button label="Nuevo ítem" icon="pi pi-plus" size="small" severity="info" @click="showNewItemDialog" />
       </div>
     </template>
 
     <template #content>
-      <div v-if="loading" class="flex justify-content-center p-4">
-        <ProgressSpinner style="width:40px;height:40px" />
-      </div>
-
-      <template v-else>
-        <!-- Empty state -->
-        <div v-if="items.length === 0" class="text-center p-4 text-color-secondary">
-          <i class="pi pi-inbox text-4xl block mb-2" />
-          <span>Sin ítems. Agregue productos/servicios de la orden.</span>
-        </div>
-
-        <!-- ── Item cards ── -->
-        <div v-for="(item, index) in items" :key="item.id" class="mb-3 border-1 border-round surface-card overflow-hidden">
-          <!-- Item header row -->
-          <div class="flex align-items-center gap-2 p-3 surface-ground border-bottom-1">
-            <i class="pi pi-tag text-primary" />
-            <div class="flex-1 grid formgrid p-fluid align-items-end gap-2">
-              <div class="col-12 md:col-5">
-                <label class="text-xs text-color-secondary block mb-1">Descripción</label>
-                <InputText
-                  v-model="item._editDescription"
-                  class="w-full text-sm"
-                  placeholder="Ej: Letreros 40×60cm"
-                  @blur="updateItem(item)"
-                />
-              </div>
-              <div class="col-6 md:col-2">
-                <label class="text-xs text-color-secondary block mb-1">Cantidad</label>
-                <InputNumber
-                  v-model="item._editQuantity"
-                  :min="0.01"
-                  :maxFractionDigits="2"
-                  class="w-full"
-                  inputClass="text-sm text-right"
-                  @blur="updateItem(item)"
-                />
-              </div>
-              <div class="col-6 md:col-2">
-                <label class="text-xs text-color-secondary block mb-1">Unidad</label>
-                <InputText
-                  v-model="item._editUnit"
-                  class="w-full text-sm"
-                  placeholder="unidad"
-                  @blur="updateItem(item)"
-                />
-              </div>
-              <div class="col-12 md:col-3 text-right">
-                <div class="text-xs text-color-secondary mb-1">Subtotal</div>
-                <span class="font-semibold text-primary">${{ formatMoney(item.estimated_total || 0) }}</span>
-              </div>
-            </div>
-            <Button
-              icon="pi pi-trash"
-              size="small"
-              text
-              severity="danger"
-              @click="removeItem(item)"
-              :loading="deletingId === item.id"
-              v-tooltip.left="'Eliminar ítem'"
-            />
-          </div>
-
-          <!-- ── Per-item material & machine management ── -->
-          <div class="p-3">
-            <!-- Materials section -->
-            <div class="mb-2">
-              <div class="flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                <span class="text-xs text-color-secondary font-medium uppercase tracking-wider">
-                  Materiales ({{ (item.materials || []).length }})
+      <!-- Items via Accordion -->
+      <Accordion :activeIndex="activeIndices" :multiple="true" @tab-open="onAccordionTabOpen" @tab-close="onAccordionTabClose" class="mb-3">
+        <AccordionTab v-for="(item, idx) in items" :key="item.id">
+          <template #header>
+            <div class="flex align-items-center justify-content-between w-full pr-2">
+              <div class="flex align-items-center gap-2 text-sm font-medium text-color">
+                <i class="pi pi-box" />
+                <span v-if="item._editingDesc" class="flex align-items-center gap-1">
+                  <InputText v-model="item.description" size="small" class="w-12rem" @keydown.enter="saveItemHeader(item)" @blur="saveItemHeader(item)" @click.stop />
                 </span>
-                <AutoComplete
-                  v-model="item._matQuery"
-                  :suggestions="item._matResults || []"
-                  @complete="(e: any) => searchProducts(e, item)"
-                  @option-select="(e: any) => addProductToItem(e, item)"
-                  optionLabel="label"
-                  placeholder="Buscar material..."
-                  :disabled="item._addingMat"
-                  :forceSelection="false"
-                  size="small"
-                  class="w-20rem"
-                  inputClass="text-sm"
-                />
+                <span v-else @click.stop="item._editingDesc = true" class="cursor-pointer hover:text-primary">
+                  {{ item.description || 'Nuevo ítem' }}
+                </span>
+                <span class="text-color-secondary text-xs">(×{{ item.quantity || 1 }} {{ item.unit || 'u' }})</span>
+                <Tag :value="`$ ${item.subtotal_est?.toFixed(2) || '0.00'}`" severity="info" class="text-xs" />
               </div>
+              <Button icon="pi pi-trash" severity="danger" text rounded size="small" @click.stop="deleteItem(item)" />
+            </div>
+          </template>
 
-              <DataTable
-                v-if="(item.materials || []).length > 0"
-                :value="item.materials"
-                size="small"
-                stripedRows
-                class="p-datatable-sm mb-2"
-                scrollable
-                scrollHeight="flex"
-              >
-                <Column field="product.name" header="Producto" style="min-width:130px" />
-                <Column header="Est." style="width:70px" class="text-right">
+          <!-- ─── MATERIALS ─── -->
+          <div class="mb-3">
+            <div class="flex align-items-center gap-2 mb-2">
+              <AutoComplete
+                :suggestions="matSuggestions[item.id] || []"
+                @complete="searchMaterials(item, $event)"
+                optionLabel="text"
+                optionValue="value"
+                :placeholder="'Buscar material...'"
+                size="small" class="flex-1"
+                @item-select="(e: any) => addMaterial(item, e.value)"
+              />
+              <Button icon="pi pi-plus" size="small" severity="info" label="Agregar" :loading="item._addingMat" @click="addCurrentMat(item)" />
+            </div>
+
+            <!-- Desktop materials DataTable -->
+            <div class="desktop-table">
+              <DataTable :value="item._materials" scrollable scrollHeight="flex" class="p-datatable-sm" stripedRows size="small" :emptyMessage="'Sin materiales'">
+                <Column field="product_name" header="Recurso" sortable style="min-width:140px">
                   <template #body="s">
-                    <InputNumber
-                      v-model="s.data._editEstQty"
-                      :min="0"
-                      :step="0.01"
-                      :maxFractionDigits="4"
-                      size="small" style="width:60px" inputClass="text-sm text-right"
-                      @blur="saveMaterial(item, s.data)"
-                    />
+                    <div class="flex align-items-center gap-2">
+                      <span class="font-medium text-sm">{{ s.data.product_name || s.data.product?.name || 'Producto #' + s.data.product_id }}</span>
+                      <i v-if="s.data.product?.is_supply" class="pi pi-box text-xs text-color-secondary" />
+                    </div>
                   </template>
                 </Column>
-                <Column header="Real" style="width:70px" class="text-right">
+                <Column header="Ud." style="min-width:45px">
+                  <template #body="s">{{ s.data.product?.unit || 'u' }}</template>
+                </Column>
+                <Column header="Est." style="min-width:60px">
                   <template #body="s">
-                    <InputNumber
-                      v-model="s.data._editRealQty"
-                      :min="0"
-                      :step="0.01"
-                      :maxFractionDigits="4"
-                      size="small" style="width:60px" inputClass="text-sm text-right"
-                      @blur="saveMaterial(item, s.data)"
-                    />
+                    <InputNumber v-model="s.data.estimated_quantity" @blur="saveMaterialInline(item, s.data)"
+                      :min="0" :maxFractionDigits="4" size="small" style="width:60px" fluid />
                   </template>
                 </Column>
-                <Column header="Costo U." style="width:90px" class="text-right">
-                  <template #body="s">${{ formatMoney(s.data.estimated_unit_cost || s.data.real_unit_cost || 0) }}</template>
-                </Column>
-                <Column header="Total" style="width:80px" class="text-right">
+                <Column header="Real" style="min-width:60px">
                   <template #body="s">
-                    ${{ formatMoney((s.data._editEstQty || 0) * (s.data.estimated_unit_cost || 0)) }}
+                    <InputNumber v-model="s.data.real_quantity" @blur="saveMaterialInline(item, s.data)"
+                      :min="0" :maxFractionDigits="4" size="small" style="width:60px" fluid />
                   </template>
                 </Column>
-                <Column header="" style="width:40px">
+                <Column header="Dif" style="min-width:50px">
                   <template #body="s">
-                    <Button
-                      icon="pi pi-trash"
-                      text
-                      rounded
-                      size="small"
-                      severity="danger"
-                      @click="deleteMaterial(item, s.data)"
-                      v-tooltip.left="'Quitar material'"
-                    />
+                    <span :class="{ 'text-red-500 font-semibold': ((s.data.estimated_quantity||0) - (s.data.real_quantity||0)) !== 0 }">
+                      {{ ((s.data.estimated_quantity||0) - (s.data.real_quantity||0)).toFixed(2) }}
+                    </span>
+                  </template>
+                </Column>
+                <Column header="Desp." style="min-width:55px">
+                  <template #body="s">
+                    <InputNumber v-model="s.data.waste_quantity" @blur="saveMaterialInline(item, s.data)"
+                      :min="0" :maxFractionDigits="4" size="small" style="width:55px" fluid />
+                  </template>
+                </Column>
+                <Column header="Precio/U." style="min-width:65px">
+                  <template #body="s">
+                    ${{ (s.data.real_unit_cost || s.data.estimated_unit_cost || 0).toFixed(2) }}
+                  </template>
+                </Column>
+                <Column header="P. Base" style="min-width:55px">
+                  <template #body="s">--</template>
+                </Column>
+                <Column header="Total Est." style="min-width:70px">
+                  <template #body="s">
+                    ${{ ((s.data.estimated_quantity||0) * (s.data.estimated_unit_cost||0)).toFixed(2) }}
+                  </template>
+                </Column>
+                <Column header="Total Real" style="min-width:70px">
+                  <template #body="s">
+                    ${{ ((s.data.real_quantity||s.data.estimated_quantity||0) * (s.data.real_unit_cost||s.data.estimated_unit_cost||0)).toFixed(2) }}
+                  </template>
+                </Column>
+                <Column header="Descripción" style="min-width:120px">
+                  <template #body="s">
+                    <Textarea v-model="s.data.notes" @blur="saveMaterialInline(item, s.data)"
+                      :autoResize="true" rows="1" class="w-full" placeholder="Nota" />
+                  </template>
+                </Column>
+                <Column header="" style="width:50px">
+                  <template #body="s">
+                    <Button icon="pi pi-trash" text rounded severity="danger" size="small"
+                      @click="deleteMaterial(item, s.data)" />
                   </template>
                 </Column>
               </DataTable>
-              <div v-else class="text-xs text-color-secondary py-1">Sin materiales asignados</div>
             </div>
 
-            <!-- Machines section -->
-            <div>
-              <div class="flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                <span class="text-xs text-color-secondary font-medium uppercase tracking-wider">
-                  Máquinas ({{ (item.machine_usages || []).length }})
-                </span>
-                <AutoComplete
-                  v-model="item._machQuery"
-                  :suggestions="item._machResults || []"
-                  @complete="(e: any) => searchMachines(e, item)"
-                  @option-select="(e: any) => addMachineToItem(e, item)"
-                  optionLabel="label"
-                  placeholder="Buscar máquina..."
-                  :disabled="item._addingMach"
-                  :forceSelection="false"
-                  size="small"
-                  class="w-20rem"
-                  inputClass="text-sm"
-                />
+            <!-- Mobile materials cards -->
+            <div class="mobile-cards">
+              <div v-for="mat in item._materials" :key="mat.id" class="col-12 mb-2 p-0">
+                <div class="p-3 border-1 border-round surface-card cursor-pointer" @click="openMatEdit(item, mat)">
+                  <div class="font-medium text-sm mb-2">{{ mat.product_name || mat.product?.name || 'Material' }}</div>
+                  <div class="grid grid-nogutter gap-2 text-sm">
+                    <div class="col-3 flex flex-column">
+                      <small class="text-color-secondary">Est.</small>
+                      <span class="font-semibold">{{ mat.estimated_quantity ?? '-' }}</span>
+                    </div>
+                    <div class="col-3 flex flex-column">
+                      <small class="text-color-secondary">Real</small>
+                      <span class="font-semibold">{{ mat.real_quantity ?? '-' }}</span>
+                    </div>
+                    <div class="col-3 flex flex-column">
+                      <small class="text-color-secondary">Dif</small>
+                      <span :class="['font-semibold', { 'text-red-500': ((mat.estimated_quantity||0)-(mat.real_quantity||0)) !== 0 }]">
+                        {{ ((mat.estimated_quantity||0) - (mat.real_quantity||0)).toFixed(1) }}
+                      </span>
+                    </div>
+                    <div class="col-3 flex flex-column">
+                      <small class="text-color-secondary">Desp</small>
+                      <span class="font-semibold">{{ mat.waste_quantity ?? '-' }}</span>
+                    </div>
+                    <div class="col-6 flex flex-column">
+                      <small class="text-color-secondary">Precio/U.</small>
+                      <span>${{ (mat.real_unit_cost || mat.estimated_unit_cost || 0).toFixed(2) }}</span>
+                    </div>
+                    <div class="col-6 flex flex-column">
+                      <small class="text-color-secondary">Total Real</small>
+                      <span class="font-semibold">${{ ((mat.real_quantity||mat.estimated_quantity||0) * (mat.real_unit_cost||mat.estimated_unit_cost||0)).toFixed(2) }}</span>
+                    </div>
+                    <div v-if="mat.notes" class="col-12 flex flex-column mt-1">
+                      <small class="text-color-secondary">Nota</small>
+                      <span class="text-sm">{{ mat.notes }}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
+            </div>
+          </div>
 
-              <DataTable
-                v-if="(item.machine_usages || []).length > 0"
-                :value="item.machine_usages"
-                size="small"
-                stripedRows
-                class="p-datatable-sm"
-                scrollable
-                scrollHeight="flex"
-              >
-                <Column field="machine.name" header="Máquina" style="min-width:130px" />
-                <Column header="Est. (h)" style="width:70px" class="text-right">
+          <!-- ─── MACHINES ─── -->
+          <div>
+            <div class="flex align-items-center gap-2 mb-2">
+              <AutoComplete
+                :suggestions="machSuggestions[item.id] || []"
+                @complete="searchMachines(item, $event)"
+                optionLabel="text"
+                optionValue="value"
+                :placeholder="'Buscar máquina...'"
+                size="small" class="flex-1"
+                @item-select="(e: any) => addMachine(item, e.value)"
+              />
+              <Button icon="pi pi-plus" size="small" severity="info" label="Agregar" :loading="item._addingMach" @click="addCurrentMach(item)" />
+            </div>
+
+            <!-- Desktop machines DataTable -->
+            <div class="desktop-table">
+              <DataTable :value="item._machine_usages" scrollable scrollHeight="flex" class="p-datatable-sm" stripedRows size="small" :emptyMessage="'Sin máquinas'">
+                <Column field="machine_name" header="Recurso" sortable style="min-width:140px">
                   <template #body="s">
-                    <InputNumber
-                      v-model="s.data._editEstUnits"
-                      :min="0"
-                      :step="0.5"
-                      :minFractionDigits="1"
-                      :maxFractionDigits="2"
-                      size="small" style="width:60px" inputClass="text-sm text-right"
-                      @blur="saveMachine(item, s.data)"
-                    />
+                    <span class="font-medium text-sm">{{ s.data.machine_name || s.data.machine?.name || 'Máquina #' + s.data.machine_id }}</span>
                   </template>
                 </Column>
-                <Column header="Real (h)" style="width:70px" class="text-right">
+                <Column header="Ud." style="min-width:45px">
+                  <template #body="s">h</template>
+                </Column>
+                <Column header="Est." style="min-width:60px">
                   <template #body="s">
-                    <InputNumber
-                      v-model="s.data._editActualUnits"
-                      :min="0"
-                      :step="0.5"
-                      :minFractionDigits="1"
-                      :maxFractionDigits="2"
-                      size="small" style="width:60px" inputClass="text-sm text-right"
-                      @blur="saveMachine(item, s.data)"
-                    />
+                    <InputNumber v-model="s.data.estimated_units" @blur="saveMachineInline(item, s.data)"
+                      :min="0" :maxFractionDigits="4" size="small" style="width:60px" fluid />
                   </template>
                 </Column>
-                <Column header="$/h" style="width:80px" class="text-right">
-                  <template #body="s">${{ formatMoney(s.data.cost_per_unit || 0) }}</template>
-                </Column>
-                <Column header="Total" style="width:80px" class="text-right">
+                <Column header="Real" style="min-width:60px">
                   <template #body="s">
-                    ${{ formatMoney((s.data._editEstUnits || 0) * (s.data.cost_per_unit || 0)) }}
+                    <InputNumber v-model="s.data.actual_units" @blur="saveMachineInline(item, s.data)"
+                      :min="0" :maxFractionDigits="4" size="small" style="width:60px" fluid />
                   </template>
                 </Column>
-                <Column header="" style="width:40px">
+                <Column header="Precio/U." style="min-width:65px">
                   <template #body="s">
-                    <Button
-                      icon="pi pi-trash"
-                      text
-                      rounded
-                      size="small"
-                      severity="danger"
-                      @click="deleteMachine(item, s.data)"
-                      v-tooltip.left="'Quitar máquina'"
-                    />
+                    ${{ (s.data.cost_per_unit || 0).toFixed(2) }}
+                  </template>
+                </Column>
+                <Column header="P. Base" style="min-width:55px">
+                  <template #body="s">
+                    ${{ (s.data.machine?.base_price || 0).toFixed(2) }}
+                  </template>
+                </Column>
+                <Column header="Total Est." style="min-width:70px">
+                  <template #body="s">
+                    ${{ ((s.data.estimated_units||0) * (s.data.cost_per_unit||0)).toFixed(2) }}
+                  </template>
+                </Column>
+                <Column header="Total Real" style="min-width:70px">
+                  <template #body="s">
+                    ${{ ((s.data.actual_units||s.data.estimated_units||0) * (s.data.cost_per_unit||0)).toFixed(2) }}
+                  </template>
+                </Column>
+                <Column header="Descripción" style="min-width:120px">
+                  <template #body="s">
+                    <Textarea v-model="s.data.description" @blur="saveMachineInline(item, s.data)"
+                      :autoResize="true" rows="1" class="w-full" placeholder="Detalle" />
+                  </template>
+                </Column>
+                <Column header="" style="width:50px">
+                  <template #body="s">
+                    <Button icon="pi pi-trash" text rounded severity="danger" size="small"
+                      @click="deleteMachine(item, s.data)" />
                   </template>
                 </Column>
               </DataTable>
-              <div v-else class="text-xs text-color-secondary py-1">Sin máquinas asignadas</div>
+            </div>
+
+            <!-- Mobile machines cards -->
+            <div class="mobile-cards">
+              <div v-for="mu in item._machine_usages" :key="mu.id" class="col-12 mb-2 p-0">
+                <div class="p-3 border-1 border-round surface-card cursor-pointer" @click="openMachEdit(item, mu)">
+                  <div class="font-medium text-sm mb-2">{{ mu.machine_name || mu.machine?.name || 'Máquina' }}</div>
+                  <div class="grid grid-nogutter gap-2 text-sm">
+                    <div class="col-4 flex flex-column">
+                      <small class="text-color-secondary">Est.</small>
+                      <span class="font-semibold">{{ mu.estimated_units ?? '-' }}</span>
+                    </div>
+                    <div class="col-4 flex flex-column">
+                      <small class="text-color-secondary">Real</small>
+                      <span class="font-semibold">{{ mu.actual_units ?? '-' }}</span>
+                    </div>
+                    <div class="col-4 flex flex-column">
+                      <small class="text-color-secondary">P/U</small>
+                      <span>${{ (mu.cost_per_unit || 0).toFixed(2) }}</span>
+                    </div>
+                    <div class="col-6 flex flex-column">
+                      <small class="text-color-secondary">Total Est.</small>
+                      <span>${{ ((mu.estimated_units||0) * (mu.cost_per_unit||0)).toFixed(2) }}</span>
+                    </div>
+                    <div class="col-6 flex flex-column">
+                      <small class="text-color-secondary">Total Real</small>
+                      <span class="font-semibold">${{ ((mu.actual_units||mu.estimated_units||0) * (mu.cost_per_unit||0)).toFixed(2) }}</span>
+                    </div>
+                    <div v-if="mu.description" class="col-12 flex flex-column mt-1">
+                      <small class="text-color-secondary">Detalle</small>
+                      <span class="text-sm">{{ mu.description }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Material mobile edit dialog trigger state per item -->
+          <!-- Machine mobile edit dialog trigger state per item -->
+        </AccordionTab>
+      </Accordion>
+
+      <!-- Nuevo ítem Dialog -->
+      <Dialog v-model:visible="newItemDialog" header="Nuevo ítem de orden" modal :closable="false" style="width:400px">
+        <div class="flex flex-column gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Descripción</label>
+            <InputText v-model="newItemDesc" class="w-full" placeholder="Ej: Letrero luminoso 2x1" />
+          </div>
+          <div class="grid">
+            <div class="col-6">
+              <label class="block text-sm font-medium mb-1">Cantidad</label>
+              <InputNumber v-model="newItemQty" :min="1" class="w-full" />
+            </div>
+            <div class="col-6">
+              <label class="block text-sm font-medium mb-1">Unidad</label>
+              <InputText v-model="newItemUnit" class="w-full" placeholder="u" />
             </div>
           </div>
         </div>
-      </template>
+        <template #footer>
+          <Button label="Cancelar" icon="pi pi-times" text severity="secondary" @click="closeNewItemDialog" />
+          <Button label="Crear" icon="pi pi-check" @click="createItem" :loading="savingNewItem" />
+        </template>
+      </Dialog>
+
+      <!-- Material mobile edit Dialog -->
+      <Dialog v-model:visible="matEditDialog" header="Editar material" modal :closable="true" style="width:420px">
+        <div v-if="editingMaterial" class="flex flex-column gap-3">
+          <div class="font-medium">{{ editingMaterial.product_name || editingMaterial.product?.name }}</div>
+          <div class="grid">
+            <div class="col-6">
+              <label class="block text-sm font-medium mb-1">Cant. Est.</label>
+              <InputNumber v-model="editingMaterial.estimated_quantity" :min="0" :maxFractionDigits="4" class="w-full" fluid />
+            </div>
+            <div class="col-6">
+              <label class="block text-sm font-medium mb-1">Cant. Real</label>
+              <InputNumber v-model="editingMaterial.real_quantity" :min="0" :maxFractionDigits="4" class="w-full" fluid />
+            </div>
+            <div class="col-6">
+              <label class="block text-sm font-medium mb-1">Desperdicio</label>
+              <InputNumber v-model="editingMaterial.waste_quantity" :min="0" :maxFractionDigits="4" class="w-full" fluid />
+            </div>
+            <div class="col-6">
+              <label class="block text-sm font-medium mb-1">P/U Estimado</label>
+              <InputNumber v-model="editingMaterial.estimated_unit_cost" :min="0" :maxFractionDigits="4" class="w-full" fluid :disabled="true" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Notas</label>
+            <Textarea v-model="editingMaterial.notes" rows="2" class="w-full" placeholder="Nota opcional" />
+          </div>
+        </div>
+        <template #footer>
+          <Button label="Cancelar" icon="pi pi-times" text severity="secondary" @click="matEditDialog = false" />
+          <Button label="Guardar" icon="pi pi-check" :loading="matEditSaving" @click="saveMatEdit" />
+        </template>
+      </Dialog>
+
+      <!-- Machine mobile edit Dialog -->
+      <Dialog v-model:visible="machEditDialog" header="Editar máquina" modal :closable="true" style="width:420px">
+        <div v-if="editingMachine" class="flex flex-column gap-3">
+          <div class="font-medium">{{ editingMachine.machine_name || editingMachine.machine?.name }}</div>
+          <div class="grid">
+            <div class="col-6">
+              <label class="block text-sm font-medium mb-1">Horas Est.</label>
+              <InputNumber v-model="editingMachine.estimated_units" :min="0" :maxFractionDigits="4" class="w-full" fluid />
+            </div>
+            <div class="col-6">
+              <label class="block text-sm font-medium mb-1">Horas Real</label>
+              <InputNumber v-model="editingMachine.actual_units" :min="0" :maxFractionDigits="4" class="w-full" fluid />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Detalle</label>
+            <Textarea v-model="editingMachine.description" rows="2" class="w-full" placeholder="Descripción opcional" />
+          </div>
+        </div>
+        <template #footer>
+          <Button label="Cancelar" icon="pi pi-times" text severity="secondary" @click="machEditDialog = false" />
+          <Button label="Guardar" icon="pi pi-check" :loading="machEditSaving" @click="saveMachEdit" />
+        </template>
+      </Dialog>
     </template>
   </Card>
-
-  <!-- Dialog: Add new item -->
-  <Dialog
-    v-model:visible="showAddItemDialog"
-    header="Nuevo ítem de orden"
-    modal
-    :style="{ width: '450px' }"
-    :closable="true"
-  >
-    <div class="flex flex-column gap-3">
-      <div class="field">
-        <label class="block text-sm font-medium mb-1">Descripción</label>
-        <InputText v-model="newItemForm.description" class="w-full" placeholder="Ej: Letreros 40×60cm" />
-      </div>
-      <div class="grid formgrid p-fluid">
-        <div class="col-6">
-          <label class="block text-sm font-medium mb-1">Cantidad</label>
-          <InputNumber
-            v-model="newItemForm.quantity"
-            :min="1"
-            :maxFractionDigits="2"
-            class="w-full"
-          />
-        </div>
-        <div class="col-6">
-          <label class="block text-sm font-medium mb-1">Unidad</label>
-          <InputText v-model="newItemForm.unit" placeholder="unidad" class="w-full" />
-        </div>
-      </div>
-    </div>
-    <template #footer>
-      <Button label="Cancelar" severity="secondary" text @click="showAddItemDialog = false" />
-      <Button label="Guardar" icon="pi pi-check" @click="createItem" :loading="saving" />
-    </template>
-  </Dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
-import { useToast } from 'primevue/usetoast'
-import api from '@/api/client'
+import { ref, watch, computed } from 'vue'
+import api from '@/api'
 import Card from 'primevue/card'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
+import Accordion from 'primevue/accordion'
+import AccordionTab from 'primevue/accordiontab'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import AutoComplete from 'primevue/autocomplete'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Textarea from 'primevue/textarea'
 import Dialog from 'primevue/dialog'
-import ProgressSpinner from 'primevue/progressspinner'
+import Tag from 'primevue/tag'
+const props = defineProps<{ workOrderId: number | string }>()
+const emit = defineEmits<{ (e: 'updated'): void }>()
 
-const props = defineProps<{
-  workOrderId: number
-}>()
+import { useConfirm } from 'primevue/useconfirm'
+const confirm = useConfirm()
 
-const emit = defineEmits<{
-  saved: []
-}>()
-
-const toast = useToast()
-const loading = ref(false)
+// ── State ──
 const items = ref<any[]>([])
-const showAddItemDialog = ref(false)
-const saving = ref(false)
-const deletingId = ref<number | null>(null)
+const loading = ref(false)
+const activeIndices = ref<number[]>([0])
+const matSuggestions = ref<Record<number | string, any[]>>({})
+const machSuggestions = ref<Record<number | string, any[]>>({})
 
-const newItemForm = ref({
-  description: '',
-  quantity: 1,
-  unit: 'unidad',
-})
+// New item dialog
+const newItemDialog = ref(false)
+const newItemDesc = ref('')
+const newItemQty = ref(1)
+const newItemUnit = ref('u')
+const savingNewItem = ref(false)
+
+// Material mobile edit dialog
+const matEditDialog = ref(false)
+const matEditSaving = ref(false)
+const editingMaterial = ref<any>(null)
+let matEditParentItem: any = null
+
+// Machine mobile edit dialog
+const machEditDialog = ref(false)
+const machEditSaving = ref(false)
+const editingMachine = ref<any>(null)
+let machEditParentItem: any = null
+
+// ── Detect mobile ──
+const isMobile = ref(window.innerWidth < 768)
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => {
+    isMobile.value = window.innerWidth < 768
+  })
+}
 
 // ── Load items ──
 async function loadItems() {
   loading.value = true
   try {
     const res = await api.get(`/work-orders/${props.workOrderId}/items`)
-    const data = res.data.data ?? res.data ?? []
-    items.value = data.map(enrichItem)
+    const data = res.data?.data || res.data || []
+    items.value = data.map((item: any) => enrichItem(item))
   } catch (e: any) {
-    console.error('Failed to load items:', e)
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los ítems', life: 5000 })
+    console.error('Error loading items:', e)
   } finally {
     loading.value = false
   }
 }
 
-// ── Enrich item with UI state ──
-function enrichItem(it: any): any {
-  return {
-    ...it,
-    _editDescription: it.description,
-    _editQuantity: Number(it.quantity || 1),
-    _editUnit: it.unit || 'unidad',
-    _matQuery: '',
-    _matResults: [],
-    _addingMat: false,
-    _machQuery: '',
-    _machResults: [],
-    _addingMach: false,
-    // Enrich materials
-    materials: (it.materials || []).map((m: any) => ({
-      ...m,
-      _editEstQty: Number(m.estimated_quantity || 0),
-      _editRealQty: m.real_quantity != null ? Number(m.real_quantity) : null,
-    })),
-    // Enrich machines
-    machine_usages: (it.machine_usages || []).map((mu: any) => ({
-      ...mu,
-      _editEstUnits: Number(mu.estimated_units || 0),
-      _editActualUnits: mu.actual_units != null ? Number(mu.actual_units) : null,
-    })),
-  }
+function enrichItem(item: any) {
+  item._editingDesc = false
+  item._addingMat = false
+  item._addingMach = false
+  item._materials = (item.materials || []).map((m: any) => ({ ...m }))
+  item._machine_usages = (item.machine_usages || []).map((m: any) => ({ ...m }))
+
+  // Sort by sort_order
+  return item
 }
 
-// ── Create item ──
+watch(() => props.workOrderId, () => { loadItems() }, { immediate: true })
+
+// ── Accordion events ──
+function onAccordionTabOpen(e: any) {
+  // e.index
+}
+function onAccordionTabClose(e: any) {
+  // e.index
+}
+
+// ── Item CRUD ──
+function showNewItemDialog() {
+  newItemDesc.value = ''
+  newItemQty.value = 1
+  newItemUnit.value = 'u'
+  newItemDialog.value = true
+}
+
+function closeNewItemDialog() {
+  newItemDialog.value = false
+}
+
 async function createItem() {
-  if (!newItemForm.value.description.trim()) return
-  saving.value = true
+  if (!newItemDesc.value.trim()) return
+  savingNewItem.value = true
   try {
     const res = await api.post(`/work-orders/${props.workOrderId}/items`, {
-      description: newItemForm.value.description.trim(),
-      quantity: newItemForm.value.quantity || 1,
-      unit: newItemForm.value.unit || 'unidad',
+      description: newItemDesc.value.trim(),
+      quantity: newItemQty.value || 1,
+      unit: newItemUnit.value || 'u',
     })
-    const created = res.data.data ?? res.data
-    items.value.push(enrichItem({ ...created, materials: [], machine_usages: [] }))
-    newItemForm.value = { description: '', quantity: 1, unit: 'unidad' }
-    showAddItemDialog.value = false
-    toast.add({ severity: 'success', summary: 'Ítem creado', life: 3000 })
-  } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo crear el ítem', life: 5000 })
-  } finally {
-    saving.value = false
-  }
-}
-
-// ── Update item ──
-const updateDebounce = new Map<number, ReturnType<typeof setTimeout>>()
-async function updateItem(item: any) {
-  // Debounce to avoid many requests during typing
-  const key = item.id
-  if (updateDebounce.has(key)) clearTimeout(updateDebounce.get(key)!)
-  updateDebounce.set(key, setTimeout(async () => {
-    updateDebounce.delete(key)
-    try {
-      await api.put(`/work-orders/${props.workOrderId}/items/${item.id}`, {
-        description: item._editDescription,
-        quantity: item._editQuantity || 1,
-        unit: item._editUnit || 'unidad',
-      })
-      item.description = item._editDescription
-      item.quantity = item._editQuantity
-      item.unit = item._editUnit
-    } catch (e: any) {
-      toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el ítem', life: 5000 })
+    items.value.push(enrichItem(res.data?.data || res.data))
+    const lastIdx = items.value.length - 1
+    if (!activeIndices.value.includes(lastIdx)) {
+      activeIndices.value = [...activeIndices.value, lastIdx]
     }
-  }, 600))
-}
-
-// ── Delete item ──
-async function removeItem(item: any) {
-  if (!confirm(`¿Eliminar "${item.description}" y todos sus materiales/máquinas?`)) return
-  deletingId.value = item.id
-  try {
-    await api.delete(`/work-orders/${props.workOrderId}/items/${item.id}`)
-    items.value = items.value.filter((i: any) => i.id !== item.id)
-    toast.add({ severity: 'success', summary: 'Ítem eliminado', life: 3000 })
+    newItemDialog.value = false
+    emit('updated')
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el ítem', life: 5000 })
+    console.error('Error creating item:', e)
   } finally {
-    deletingId.value = null
+    savingNewItem.value = false
   }
 }
 
-// ── Search products for a specific item ──
-async function searchProducts(e: { query: string }, item: any) {
+async function saveItemHeader(item: any) {
+  item._editingDesc = false
   try {
-    const res = await api.get(`/products?search=${encodeURIComponent(e.query)}&limit=10`)
-    const raw = res.data.data || res.data || []
-    const list = Array.isArray(raw) ? raw : (raw.data || [])
-    item._matResults = list.map((p: any) => ({
-      label: `${p.code || p.name} - ${p.name}`,
-      id: p.id,
-      name: p.name,
-      unit: p.unit || 'u',
-    }))
-  } catch { /* ignore */ }
+    await api.put(`/work-orders/${props.workOrderId}/items/${item.id}`, {
+      description: item.description,
+      quantity: item.quantity,
+      unit: item.unit,
+    })
+    emit('updated')
+  } catch (e: any) {
+    console.error('Error saving item header:', e)
+  }
 }
 
-// ── Add product to an item ──
-async function addProductToItem(e: any, item: any) {
-  const product = item._matResults?.find((x: any) => x.id === (e?.value?.id || e?.id || e?.value))
+function deleteItem(item: any) {
+  confirm.require({
+    message: `Eliminar "${item.description || 'este ítem'}" y todos sus materiales/máquinas?`,
+    header: 'Eliminar ítem',
+    acceptLabel: 'Eliminar',
+    rejectLabel: 'Cancelar',
+    accept: async () => {
+      try {
+        await api.delete(`/work-orders/${props.workOrderId}/items/${item.id}`)
+        const idx = items.value.indexOf(item)
+        if (idx !== -1) items.value.splice(idx, 1)
+        activeIndices.value = activeIndices.value.filter((i: number) => i !== idx)
+        emit('updated')
+      } catch (e: any) {
+        console.error('Error deleting item:', e)
+      }
+    },
+  })
+}
+
+// ── Material helpers ──
+let lastMatSearch = ''
+async function searchMaterials(item: any, event: any) {
+  const q = (event.query || '').trim()
+  if (!q || q.length < 1) { matSuggestions.value[item.id] = []; return }
+  lastMatSearch = q
+  try {
+    const res = await api.get('/products', { params: { search: q, limit: 15 } })
+    const products = res.data?.data || []
+    matSuggestions.value[item.id] = products
+      .filter((p: any) => {
+        const existing = (item._materials || []).find((m: any) => m.product_id === p.id)
+        return !existing
+      })
+      .map((p: any) => ({
+        text: `${p.name} (${p.code || 'sin código'})`,
+        value: p.id,
+        product: p,
+      }))
+  } catch { matSuggestions.value[item.id] = [] }
+}
+
+async function addMaterial(item: any, productId: number) {
+  const product = matSuggestions.value[item.id]?.find((s: any) => s.value === productId)?.product
   if (!product) return
-
-  // Check duplicate
-  if ((item.materials || []).some((m: any) => m.product_id === product.id && !m.deleted_at)) {
-    toast.add({ severity: 'warn', summary: 'Duplicado', detail: 'El material ya está en este ítem', life: 4000 })
-    item._matQuery = ''
-    item._matResults = []
-    return
-  }
-
   item._addingMat = true
   try {
     const res = await api.post(`/work-orders/${props.workOrderId}/materials`, {
-      product_id: product.id,
-      estimated_quantity: 1,
+      product_id: productId,
       work_order_item_id: item.id,
+      estimated_quantity: product.estimated_quantity || 1,
     })
-    const created = res.data.data ?? res.data
-    item.materials.push({
-      ...created,
-      _editEstQty: Number(created.estimated_quantity || 0),
-      _editRealQty: created.real_quantity != null ? Number(created.real_quantity) : null,
-    })
-    item._matQuery = ''
-    item._matResults = []
-    toast.add({ severity: 'success', summary: 'Material agregado', life: 3000 })
-  } catch (err: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: err.response?.data?.message || 'Error al agregar material', life: 5000 })
+    const newMat = { ...res.data?.data || res.data, product_name: product.name, product }
+    item._materials.push(newMat)
+    // Refresh suggestion list after add
+    matSuggestions.value[item.id] = (matSuggestions.value[item.id] || []).filter((s: any) => s.value !== productId)
+    emit('updated')
+  } catch (e: any) {
+    if (e.response?.data?.message) {
+      console.warn(e.response.data.message)
+    }
   } finally {
     item._addingMat = false
   }
 }
 
-// ── Save material inline ──
-async function saveMaterial(item: any, mat: any) {
+async function addCurrentMat(item: any) {
+  const suggestions = matSuggestions.value[item.id]
+  if (!suggestions || suggestions.length === 0) return
+  await addMaterial(item, suggestions[0].value)
+}
+
+async function saveMaterialInline(item: any, mat: any) {
   try {
     await api.put(`/work-orders/${props.workOrderId}/materials/${mat.id}`, {
-      estimated_quantity: mat._editEstQty ?? 0,
-      real_quantity: mat._editRealQty,
+      estimated_quantity: mat.estimated_quantity,
+      real_quantity: mat.real_quantity,
+      waste_quantity: mat.waste_quantity,
+      notes: mat.notes,
     })
-    mat.estimated_quantity = mat._editEstQty
-    mat.real_quantity = mat._editRealQty
+    emit('updated')
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e.response?.data?.message || 'Error al guardar material', life: 5000 })
+    console.error('Error saving material:', e)
   }
 }
 
-// ── Delete material ──
-async function deleteMaterial(item: any, mat: any) {
+function deleteMaterial(item: any, mat: any) {
+  confirm.require({
+    message: `Eliminar "${mat.product_name || mat.product?.name || 'material'}" de la lista?`,
+    header: 'Eliminar material',
+    acceptLabel: 'Eliminar',
+    rejectLabel: 'Cancelar',
+    accept: async () => {
+      try {
+        await api.delete(`/work-orders/${props.workOrderId}/materials/${mat.id}`)
+        const idx = item._materials.indexOf(mat)
+        if (idx !== -1) item._materials.splice(idx, 1)
+        emit('updated')
+      } catch (e: any) {
+        console.error('Error deleting material:', e)
+      }
+    },
+  })
+}
+
+// Mobile material edit dialog
+function openMatEdit(item: any, mat: any) {
+  matEditParentItem = item
+  editingMaterial.value = { ...mat }
+  matEditDialog.value = true
+}
+
+async function saveMatEdit() {
+  if (!editingMaterial.value || !matEditParentItem) return
+  matEditSaving.value = true
   try {
-    await api.delete(`/work-orders/${props.workOrderId}/materials/${mat.id}`)
-    item.materials = item.materials.filter((m: any) => m.id !== mat.id)
-    toast.add({ severity: 'success', summary: 'Material quitado', life: 3000 })
+    const mat = editingMaterial.value
+    await api.put(`/work-orders/${props.workOrderId}/materials/${mat.id}`, {
+      estimated_quantity: mat.estimated_quantity,
+      real_quantity: mat.real_quantity,
+      waste_quantity: mat.waste_quantity,
+      notes: mat.notes,
+    })
+    // Sync back to parent item's material array
+    const targetMat = matEditParentItem._materials.find((m: any) => m.id === mat.id)
+    if (targetMat) {
+      Object.assign(targetMat, mat)
+    }
+    matEditDialog.value = false
+    emit('updated')
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo quitar el material', life: 5000 })
+    console.error('Error saving material in dialog:', e)
+  } finally {
+    matEditSaving.value = false
   }
 }
 
-// ── Search machines for a specific item ──
-async function searchMachines(e: { query: string }, item: any) {
+// ── Machine helpers ──
+async function searchMachines(item: any, event: any) {
+  const q = (event.query || '').trim()
+  if (!q || q.length < 1) { machSuggestions.value[item.id] = []; return }
   try {
-    const res = await api.get(`/machines?search=${encodeURIComponent(e.query)}&limit=10&work_order=1`)
-    const raw = res.data.data || res.data || []
-    const list = Array.isArray(raw) ? raw : (raw.data || [])
-    item._machResults = list.map((m: any) => ({
-      label: `${m.code || m.name} - ${m.name}`,
-      id: m.id,
-      name: m.name,
-    }))
-  } catch { /* ignore */ }
+    const res = await api.get('/machines', { params: { search: q, limit: 15 } })
+    const machines = res.data?.data || []
+    machSuggestions.value[item.id] = machines
+      .filter((m: any) => {
+        const existing = (item._machine_usages || []).find((mu: any) => mu.machine_id === m.id)
+        return !existing
+      })
+      .map((m: any) => ({
+        text: `${m.name} (${m.code || 'sin código'})`,
+        value: m.id,
+        machine: m,
+      }))
+  } catch { machSuggestions.value[item.id] = [] }
 }
 
-// ── Add machine to an item ──
-async function addMachineToItem(e: any, item: any) {
-  const machine = item._machResults?.find((x: any) => x.id === (e?.value?.id || e?.id || e?.value))
-  if (!machine) return
-
-  if ((item.machine_usages || []).some((mu: any) => mu.machine_id === machine.id)) {
-    toast.add({ severity: 'warn', summary: 'Duplicado', detail: 'La máquina ya está en este ítem', life: 4000 })
-    item._machQuery = ''
-    item._machResults = []
-    return
-  }
-
+async function addMachine(item: any, machineId: number) {
+  const machineObj = machSuggestions.value[item.id]?.find((s: any) => s.value === machineId)?.machine
+  if (!machineObj) return
   item._addingMach = true
   try {
     const res = await api.post(`/work-orders/${props.workOrderId}/machine-usages`, {
-      machine_id: machine.id,
-      estimated_units: 1,
-      actual_units: 0,
+      machine_id: machineId,
       work_order_item_id: item.id,
+      estimated_units: 1,
     })
-    const created = res.data.data ?? res.data
-    item.machine_usages.push({
-      ...created,
-      _editEstUnits: Number(created.estimated_units || 0),
-      _editActualUnits: created.actual_units != null ? Number(created.actual_units) : null,
-    })
-    item._machQuery = ''
-    item._machResults = []
-    toast.add({ severity: 'success', summary: 'Máquina agregada', life: 3000 })
-  } catch (err: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: err.response?.data?.message || 'Error al agregar máquina', life: 5000 })
+    const newMu = { ...res.data?.data || res.data, machine_name: machineObj.name, machine: machineObj }
+    item._machine_usages.push(newMu)
+    machSuggestions.value[item.id] = (machSuggestions.value[item.id] || []).filter((s: any) => s.value !== machineId)
+    emit('updated')
+  } catch (e: any) {
+    if (e.response?.data?.message) {
+      console.warn(e.response.data.message)
+    }
   } finally {
     item._addingMach = false
   }
 }
 
-// ── Save machine inline ──
-async function saveMachine(item: any, mu: any) {
+async function addCurrentMach(item: any) {
+  const suggestions = machSuggestions.value[item.id]
+  if (!suggestions || suggestions.length === 0) return
+  await addMachine(item, suggestions[0].value)
+}
+
+async function saveMachineInline(item: any, mu: any) {
   try {
     await api.put(`/work-orders/${props.workOrderId}/machine-usages/${mu.id}`, {
-      estimated_units: mu._editEstUnits ?? 0,
-      actual_units: mu._editActualUnits ?? 0,
+      estimated_units: mu.estimated_units,
+      actual_units: mu.actual_units,
+      description: mu.description,
     })
-    mu.estimated_units = mu._editEstUnits
-    mu.actual_units = mu._editActualUnits
+    emit('updated')
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e.response?.data?.message || 'Error al guardar máquina', life: 5000 })
+    console.error('Error saving machine:', e)
   }
 }
 
-// ── Delete machine ──
-async function deleteMachine(item: any, mu: any) {
+function deleteMachine(item: any, mu: any) {
+  confirm.require({
+    message: `Eliminar "${mu.machine_name || mu.machine?.name || 'máquina'}" de la lista?`,
+    header: 'Eliminar máquina',
+    acceptLabel: 'Eliminar',
+    rejectLabel: 'Cancelar',
+    accept: async () => {
+      try {
+        await api.delete(`/work-orders/${props.workOrderId}/machine-usages/${mu.id}`)
+        const idx = item._machine_usages.indexOf(mu)
+        if (idx !== -1) item._machine_usages.splice(idx, 1)
+        emit('updated')
+      } catch (e: any) {
+        console.error('Error deleting machine:', e)
+      }
+    },
+  })
+}
+
+// Machine mobile edit dialog
+function openMachEdit(item: any, mu: any) {
+  machEditParentItem = item
+  editingMachine.value = { ...mu }
+  machEditDialog.value = true
+}
+
+async function saveMachEdit() {
+  if (!editingMachine.value || !machEditParentItem) return
+  machEditSaving.value = true
   try {
-    await api.delete(`/work-orders/${props.workOrderId}/machine-usages/${mu.id}`)
-    item.machine_usages = item.machine_usages.filter((m: any) => m.id !== mu.id)
-    toast.add({ severity: 'success', summary: 'Máquina quitada', life: 3000 })
+    const mu = editingMachine.value
+    await api.put(`/work-orders/${props.workOrderId}/machine-usages/${mu.id}`, {
+      estimated_units: mu.estimated_units,
+      actual_units: mu.actual_units,
+      description: mu.description,
+    })
+    const targetMu = machEditParentItem._machine_usages.find((m: any) => m.id === mu.id)
+    if (targetMu) Object.assign(targetMu, mu)
+    machEditDialog.value = false
+    emit('updated')
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo quitar la máquina', life: 5000 })
+    console.error('Error saving machine in dialog:', e)
+  } finally {
+    machEditSaving.value = false
   }
 }
-
-// ── Format helpers ──
-function formatMoney(v: number | string): string {
-  const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0)
-  return n.toFixed(2)
-}
-
-onMounted(loadItems)
-watch(() => props.workOrderId, loadItems)
 </script>
+
+<style scoped>
+/* Hide desktop tables on mobile, show mobile cards */
+.mobile-cards { display: none; }
+@media (max-width: 767px) {
+  .desktop-table { display: none; }
+  .mobile-cards { display: block; }
+}
+.mobile-cards .cursor-pointer:hover {
+  border-color: var(--p-primary-color) !important;
+}
+@media (hover: none) {
+  .mobile-cards .cursor-pointer:active {
+    border-color: var(--p-primary-color) !important;
+  }
+}
+</style>
