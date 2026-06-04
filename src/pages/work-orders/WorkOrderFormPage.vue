@@ -246,7 +246,12 @@
           </div>
         </div>
 
-        <!-- Resources unificados (only when WO exists) -->
+        <!-- Ítems de la orden (only when WO exists) -->
+        <div v-if="isEdit" class="col-12">
+          <OrderItems :workOrderId="Number(route.params.id)" />
+        </div>
+
+      <!-- Resources unificados (only when WO exists) -->
         <div v-if="isEdit" class="col-12">
           <WorkOrderResources
             :workOrderId="Number(route.params.id)"
@@ -294,6 +299,7 @@ import { useToast } from 'primevue/usetoast'
 import { downloadAttachment } from '@/composables/useAttachmentUrl'
 import type { WorkOrderStatus } from '@/composables/workOrderTypes'
 import WorkOrderResources from '@/components/WorkOrderResources.vue'
+import OrderItems from '@/components/OrderItems.vue'
 
 const route = useRoute()
 const router = useRouter()

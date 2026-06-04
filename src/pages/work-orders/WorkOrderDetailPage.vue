@@ -41,14 +41,8 @@
    <span class="text-color-secondary text-xs ml-auto text-overflow-ellipsis white-space-nowrap overflow-hidden">{{ teamLeaderName }}</span>
   </div>
 
-  <!-- === RECURSOS UNIFICADO === -->
-  <WorkOrderResources
-   :workOrderId="order.id"
-   :isDraft="order.status?.code === 'draft'"
-   :statusId="order.status_id ?? null"
-   :statusName="order.status?.name || ''"
-   @openHistory="openCombinedHistory"
-  />
+  <!-- === ÍTEMS DE LA ORDEN (agrupa materiales + máquinas por ítem) === -->
+  <OrderItems :workOrderId="order.id" />
 
   <!-- Comments -->
   <Card class="mb-3">

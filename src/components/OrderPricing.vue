@@ -56,6 +56,9 @@
       <Message v-if="billingMode === 'product_list'" severity="info" :closable="false" class="mb-3">
         Seleccione productos del listado para facturar.
       </Message>
+      <Message v-if="billingMode === 'item_list'" severity="info" :closable="false" class="mb-3">
+        Facturando por ítem de orden (una línea por producto/servicio).
+      </Message>
       <Message v-if="billingMode === 'line_items'" severity="warn" :closable="false" class="mb-3">
         Ingrese líneas de factura manual. El total debe coincidir con <strong>${{ formatMoney(targetTotal) }}</strong>.
       </Message>
@@ -143,6 +146,9 @@
         <template v-if="billingMode === 'product_list' && combinedItems.length === 0">
           <div class="col-12 text-color-secondary p-4 text-center">Seleccione productos del listado para facturar.</div>
         </template>
+        <template v-else-if="billingMode === 'item_list' && combinedItems.length === 0">
+          <div class="col-12 text-color-secondary p-4 text-center">Agregue ítems a la orden para facturar.</div>
+        </template>
         <template v-else-if="billingMode === 'line_items' && invoiceLines.length === 0">
           <div class="col-12 text-color-secondary p-4 text-center">Sin líneas de facturación aún.</div>
         </template>
@@ -152,6 +158,26 @@
           <div v-for="item in combinedItems" :key="item._key || item.description" class="col-12 mb-2">
             <div class="p-3 border-1 border-round surface-card">
               <div class="font-medium text-sm" :class="{ 'text-color-secondary': item.type === 'machine' }">
+                {{ item.description }}
+              </div>
+              <div class="flex flex-wrap gap-3 align-items-center text-sm text-color-secondary mt-1">
+                <span v-if="item.unit"><strong>U.:</strong> {{ item.unit }}</span>
+                <span v-if="item.quantity != null"><strong>Cant.:</strong> {{ formatQty(item.quantity) }}</span>
+                <span v-if="item.unit_price != null"><strong>P. Unit.:</strong> ${{ formatMoney(item.unit_price) }}</span>
+                <span v-if="item.iva_label"><strong>IVA:</strong> {{ item.iva_label }}</span>
+              </div>
+              <div class="mt-1">
+                <span class="font-semibold text-sm">Total: ${{ formatMoney(item.line_total || 0) }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Item list mode: render from combinedItems (one per WO item) -->
+        <template v-if="billingMode === 'item_list'">
+          <div v-for="item in combinedItems" :key="item.id" class="col-12 mb-2">
+            <div class="p-3 border-1 border-round surface-card">
+              <div class="font-medium text-sm">
                 {{ item.description }}
               </div>
               <div class="flex flex-wrap gap-3 align-items-center text-sm text-color-secondary mt-1">
@@ -645,6 +671,7 @@ const billingBasisOptions = computed(() => [
 
 const billingModeOptions = [
   { label: 'Basado en listados', value: 'product_list' },
+  { label: 'Basado en ítems', value: 'item_list' },
   { label: 'Líneas manuales', value: 'line_items' },
 ]
 
@@ -660,7 +687,30 @@ function itemTypeLabel(type: string): string {
   return 'Material'
 }
 
+// Determine billing mode from pricing data
+const activeBillingMode = computed(() => billingMode.value || pricingData.value.billing_mode || 'product_list')
+
+// Combined items: what to display as invoice line items
 const combinedItems = computed(() => {
+  // Item list mode: show one line per WorkOrderItem
+  if (pricing.value?.billing_mode === 'item_list') {
+    const items = pricingData.value.items ?? []
+    return items.map((m: any, i: number) => {
+      const ivaLabel = ivas.value.find((iv: any) => iv.id === (m.iva_id ?? null) )?.name ?? '0%'
+      return {
+        id: `item-${m.item_id || i}`,
+        type: 'product',
+        description: m.description,
+        unit: m.unit || 'u',
+        quantity: m.quantity,
+        unit_price: m.unit_price,
+        line_total: m.line_total,
+        iva_label: ivaLabel,
+      }
+    })
+  }
+
+  // Product list mode: show one line per material/machine
   const items: any[] = []
   for (const m of (pricingData.value.materials ?? [])) {
     const type = m.type ?? 'product'
