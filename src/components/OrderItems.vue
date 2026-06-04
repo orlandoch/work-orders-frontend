@@ -22,7 +22,7 @@
                   {{ item.description || 'Nuevo ítem' }}
                 </span>
                 <span class="text-color-secondary text-xs">(×{{ item.quantity || 1 }} {{ item.unit || 'u' }})</span>
-                <Tag :value="`$ ${item.subtotal_est?.toFixed(2) || '0.00'}`" severity="info" class="text-xs" />
+                <Tag :value="`$ ${toMoney(item.subtotal_est)}`" severity="info" class="text-xs" />
               </div>
               <Button icon="pi pi-trash" severity="danger" text rounded size="small" @click.stop="deleteItem(item)" />
             </div>
@@ -72,7 +72,7 @@
                 <Column header="Dif" style="min-width:50px">
                   <template #body="s">
                     <span :class="{ 'text-red-500 font-semibold': ((s.data.estimated_quantity||0) - (s.data.real_quantity||0)) !== 0 }">
-                      {{ ((s.data.estimated_quantity||0) - (s.data.real_quantity||0)).toFixed(2) }}
+                      {{ toFixedNum((s.data.estimated_quantity||0) - (s.data.real_quantity||0), 2) }}
                     </span>
                   </template>
                 </Column>
@@ -84,7 +84,7 @@
                 </Column>
                 <Column header="Precio/U." style="min-width:65px">
                   <template #body="s">
-                    ${{ (s.data.real_unit_cost || s.data.estimated_unit_cost || 0).toFixed(2) }}
+                    ${{ toMoney(s.data.real_unit_cost || s.data.estimated_unit_cost || 0) }}
                   </template>
                 </Column>
                 <Column header="P. Base" style="min-width:55px">
@@ -92,12 +92,12 @@
                 </Column>
                 <Column header="Total Est." style="min-width:70px">
                   <template #body="s">
-                    ${{ ((s.data.estimated_quantity||0) * (s.data.estimated_unit_cost||0)).toFixed(2) }}
+                    ${{ toMoney((s.data.estimated_quantity||0) * (s.data.estimated_unit_cost||0)) }}
                   </template>
                 </Column>
                 <Column header="Total Real" style="min-width:70px">
                   <template #body="s">
-                    ${{ ((s.data.real_quantity||s.data.estimated_quantity||0) * (s.data.real_unit_cost||s.data.estimated_unit_cost||0)).toFixed(2) }}
+                    ${{ toMoney((s.data.real_quantity||s.data.estimated_quantity||0) * (s.data.real_unit_cost||s.data.estimated_unit_cost||0)) }}
                   </template>
                 </Column>
                 <Column header="Descripción" style="min-width:120px">
@@ -132,7 +132,7 @@
                     <div class="col-3 flex flex-column">
                       <small class="text-color-secondary">Dif</small>
                       <span :class="['font-semibold', { 'text-red-500': ((mat.estimated_quantity||0)-(mat.real_quantity||0)) !== 0 }]">
-                        {{ ((mat.estimated_quantity||0) - (mat.real_quantity||0)).toFixed(1) }}
+                        {{ toFixedNum((mat.estimated_quantity||0) - (mat.real_quantity||0), 1) }}
                       </span>
                     </div>
                     <div class="col-3 flex flex-column">
@@ -141,11 +141,11 @@
                     </div>
                     <div class="col-6 flex flex-column">
                       <small class="text-color-secondary">Precio/U.</small>
-                      <span>${{ (mat.real_unit_cost || mat.estimated_unit_cost || 0).toFixed(2) }}</span>
+                      <span>${{ toMoney(mat.real_unit_cost || mat.estimated_unit_cost || 0) }}</span>
                     </div>
                     <div class="col-6 flex flex-column">
                       <small class="text-color-secondary">Total Real</small>
-                      <span class="font-semibold">${{ ((mat.real_quantity||mat.estimated_quantity||0) * (mat.real_unit_cost||mat.estimated_unit_cost||0)).toFixed(2) }}</span>
+                      <span class="font-semibold">${{ toMoney((mat.real_quantity||mat.estimated_quantity||0) * (mat.real_unit_cost||mat.estimated_unit_cost||0)) }}</span>
                     </div>
                     <div v-if="mat.notes" class="col-12 flex flex-column mt-1">
                       <small class="text-color-secondary">Nota</small>
@@ -197,22 +197,22 @@
                 </Column>
                 <Column header="Precio/U." style="min-width:65px">
                   <template #body="s">
-                    ${{ (s.data.cost_per_unit || 0).toFixed(2) }}
+                    ${{ toMoney(s.data.cost_per_unit || 0) }}
                   </template>
                 </Column>
                 <Column header="P. Base" style="min-width:55px">
                   <template #body="s">
-                    ${{ (s.data.machine?.base_price || 0).toFixed(2) }}
+                    ${{ toMoney(s.data.machine?.base_price || 0) }}
                   </template>
                 </Column>
                 <Column header="Total Est." style="min-width:70px">
                   <template #body="s">
-                    ${{ ((s.data.estimated_units||0) * (s.data.cost_per_unit||0)).toFixed(2) }}
+                    ${{ toMoney((s.data.estimated_units||0) * (s.data.cost_per_unit||0)) }}
                   </template>
                 </Column>
                 <Column header="Total Real" style="min-width:70px">
                   <template #body="s">
-                    ${{ ((s.data.actual_units||s.data.estimated_units||0) * (s.data.cost_per_unit||0)).toFixed(2) }}
+                    ${{ toMoney((s.data.actual_units||s.data.estimated_units||0) * (s.data.cost_per_unit||0)) }}
                   </template>
                 </Column>
                 <Column header="Descripción" style="min-width:120px">
@@ -246,15 +246,15 @@
                     </div>
                     <div class="col-4 flex flex-column">
                       <small class="text-color-secondary">P/U</small>
-                      <span>${{ (mu.cost_per_unit || 0).toFixed(2) }}</span>
+                      <span>${{ toMoney(mu.cost_per_unit || 0) }}</span>
                     </div>
                     <div class="col-6 flex flex-column">
                       <small class="text-color-secondary">Total Est.</small>
-                      <span>${{ ((mu.estimated_units||0) * (mu.cost_per_unit||0)).toFixed(2) }}</span>
+                      <span>${{ toMoney((mu.estimated_units||0) * (mu.cost_per_unit||0)) }}</span>
                     </div>
                     <div class="col-6 flex flex-column">
                       <small class="text-color-secondary">Total Real</small>
-                      <span class="font-semibold">${{ ((mu.actual_units||mu.estimated_units||0) * (mu.cost_per_unit||0)).toFixed(2) }}</span>
+                      <span class="font-semibold">${{ toMoney((mu.actual_units||mu.estimated_units||0) * (mu.cost_per_unit||0)) }}</span>
                     </div>
                     <div v-if="mu.description" class="col-12 flex flex-column mt-1">
                       <small class="text-color-secondary">Detalle</small>
@@ -384,6 +384,13 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 const confirm = useConfirm()
 const toast = useToast()
+
+function toMoney(v: any): string {
+  return (Number(v) || 0).toFixed(2)
+}
+function toFixedNum(v: any, d: number = 2): string {
+  return (Number(v) || 0).toFixed(d)
+}
 
 // ── State ──
 const items = ref<any[]>([])
