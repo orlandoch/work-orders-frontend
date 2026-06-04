@@ -38,15 +38,14 @@
                 optionValue="value"
                 :placeholder="'Buscar material...'"
                 size="small" class="flex-1"
-                @item-select="(e: any) => addMaterial(item, e.value)"
+                @item-select="(e: any) => addMaterial(item, e.value.value)"
               />
-              <Button icon="pi pi-plus" size="small" severity="info" label="Agregar" :loading="item._addingMat" @click="addCurrentMat(item)" />
             </div>
 
             <!-- Desktop materials DataTable -->
             <div class="desktop-table">
               <DataTable :value="item._materials" scrollable scrollHeight="flex" class="p-datatable-sm" stripedRows size="small" :emptyMessage="'Sin materiales'">
-                <Column field="product_name" header="Recurso" sortable style="min-width:140px">
+                <Column field="product_name" header="Material/Servicio" sortable style="min-width:140px">
                   <template #body="s">
                     <div class="flex align-items-center gap-2">
                       <span class="font-medium text-sm">{{ s.data.product_name || s.data.product?.name || 'Producto #' + s.data.product_id }}</span>
@@ -167,15 +166,14 @@
                 optionValue="value"
                 :placeholder="'Buscar máquina...'"
                 size="small" class="flex-1"
-                @item-select="(e: any) => addMachine(item, e.value)"
+                @item-select="(e: any) => addMachine(item, e.value.value)"
               />
-              <Button icon="pi pi-plus" size="small" severity="info" label="Agregar" :loading="item._addingMach" @click="addCurrentMach(item)" />
             </div>
 
             <!-- Desktop machines DataTable -->
             <div class="desktop-table">
               <DataTable :value="item._machine_usages" scrollable scrollHeight="flex" class="p-datatable-sm" stripedRows size="small" :emptyMessage="'Sin máquinas'">
-                <Column field="machine_name" header="Recurso" sortable style="min-width:140px">
+                <Column field="machine_name" header="Máquina/Equipo" sortable style="min-width:140px">
                   <template #body="s">
                     <span class="font-medium text-sm">{{ s.data.machine_name || s.data.machine?.name || 'Máquina #' + s.data.machine_id }}</span>
                   </template>
@@ -443,8 +441,6 @@ async function loadItems() {
 
 function enrichItem(item: any) {
   item._editingDesc = false
-  item._addingMat = false
-  item._addingMach = false
   item._materials = (item.materials || []).map((m: any) => ({ ...m }))
   item._machine_usages = (item.machine_usages || []).map((m: any) => ({ ...m }))
 
@@ -565,7 +561,6 @@ async function searchMaterials(item: any, event: any) {
 async function addMaterial(item: any, productId: number) {
   const product = matSuggestions.value[item.id]?.find((s: any) => s.value === productId)?.product
   if (!product) return
-  item._addingMat = true
   try {
     const res = await api.post(`/work-orders/${props.workOrderId}/materials`, {
       product_id: productId,
@@ -582,14 +577,7 @@ async function addMaterial(item: any, productId: number) {
     const msg = e.response?.data?.message || e.message || 'Error al agregar material'
     toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   } finally {
-    item._addingMat = false
   }
-}
-
-async function addCurrentMat(item: any) {
-  const suggestions = matSuggestions.value[item.id]
-  if (!suggestions || suggestions.length === 0) return
-  await addMaterial(item, suggestions[0].value)
 }
 
 async function saveMaterialInline(item: any, mat: any) {
@@ -686,7 +674,6 @@ async function searchMachines(item: any, event: any) {
 async function addMachine(item: any, machineId: number) {
   const machineObj = machSuggestions.value[item.id]?.find((s: any) => s.value === machineId)?.machine
   if (!machineObj) return
-  item._addingMach = true
   try {
     const res = await api.post(`/work-orders/${props.workOrderId}/machine-usages`, {
       machine_id: machineId,
@@ -702,14 +689,7 @@ async function addMachine(item: any, machineId: number) {
     const msg = e.response?.data?.message || e.message || 'Error al agregar máquina'
     toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 5000 })
   } finally {
-    item._addingMach = false
   }
-}
-
-async function addCurrentMach(item: any) {
-  const suggestions = machSuggestions.value[item.id]
-  if (!suggestions || suggestions.length === 0) return
-  await addMachine(item, suggestions[0].value)
 }
 
 async function saveMachineInline(item: any, mu: any) {
