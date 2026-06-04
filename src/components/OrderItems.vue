@@ -544,7 +544,7 @@ async function searchMaterials(item: any, event: any) {
   lastMatSearch = q
   try {
     const res = await api.get('/products', { params: { search: q, limit: 15 } })
-    const products = res.data?.data || []
+    const products = res.data?.data?.data || []
     matSuggestions.value[item.id] = products
       .filter((p: any) => {
         const existing = (item._materials || []).find((m: any) => m.product_id === p.id)
@@ -657,7 +657,7 @@ async function searchMachines(item: any, event: any) {
   if (!q || q.length < 1) { machSuggestions.value[item.id] = []; return }
   try {
     const res = await api.get('/machines', { params: { search: q, limit: 15 } })
-    const machines = res.data?.data || []
+    const machines = res.data?.data?.data || []
     machSuggestions.value[item.id] = machines
       .filter((m: any) => {
         const existing = (item._machine_usages || []).find((mu: any) => mu.machine_id === m.id)
