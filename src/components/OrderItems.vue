@@ -536,6 +536,24 @@ function deleteItem(item: any) {
   })
 }
 
+// ── Helper: extrae el arreglo de una respuesta paginada de Laravel ──
+// Dos formatos posibles:
+//   A) {success:true, data: paginator}  → ProductController
+//   B) paginator (res.data)              → MachineController
+function extractPaginatedArray(axiosResponse: any): any[] {
+  const body = axiosResponse?.data
+  if (!body) return []
+  // Formato A: {success, data: {current_page, data: [...]}}
+  if (body.success !== undefined && body.data?.data) {
+    return Array.isArray(body.data.data) ? body.data.data : []
+  }
+  // Formato B: paginator directo {current_page, data: [...]}
+  if (Array.isArray(body.data)) {
+    return body.data
+  }
+  return []
+}
+
 // ── Material helpers ──
 let lastMatSearch = ''
 async function searchMaterials(item: any, event: any) {
@@ -544,7 +562,7 @@ async function searchMaterials(item: any, event: any) {
   lastMatSearch = q
   try {
     const res = await api.get('/products', { params: { search: q, limit: 15 } })
-    const products = res.data?.data?.data || []
+    const products = extractPaginatedArray(res)
     matSuggestions.value[item.id] = products
       .filter((p: any) => {
         const existing = (item._materials || []).find((m: any) => m.product_id === p.id)
@@ -657,7 +675,7 @@ async function searchMachines(item: any, event: any) {
   if (!q || q.length < 1) { machSuggestions.value[item.id] = []; return }
   try {
     const res = await api.get('/machines', { params: { search: q, limit: 15 } })
-    const machines = res.data?.data?.data || []
+    const machines = extractPaginatedArray(res)
     machSuggestions.value[item.id] = machines
       .filter((m: any) => {
         const existing = (item._machine_usages || []).find((mu: any) => mu.machine_id === m.id)
