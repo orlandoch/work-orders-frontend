@@ -17,11 +17,13 @@
                 <i class="pi pi-box" />
                 <span v-if="item._editingDesc" class="flex align-items-center gap-1">
                   <InputText v-model="item.description" size="small" class="w-12rem" @keydown.enter="saveItemHeader(item)" @blur="saveItemHeader(item)" @click.stop />
+                  <InputNumber v-model="item.quantity" :min="0" :maxFractionDigits="2" size="small" class="w-6rem" @blur="saveItemHeader(item)" @click.stop placeholder="Cant." />
+                  <InputText v-model="item.unit" size="small" class="w-4rem" @blur="saveItemHeader(item)" @click.stop placeholder="Und." />
                 </span>
                 <span v-else @click.stop="item._editingDesc = true" class="cursor-pointer hover:text-primary">
                   {{ item.description || 'Nuevo ítem' }}
+                  <small class="text-color-secondary">(×{{ item.quantity || 1 }} {{ item.unit || 'u' }})</small>
                 </span>
-                <span class="text-color-secondary text-xs">(×{{ item.quantity || 1 }} {{ item.unit || 'u' }})</span>
                 <Tag :value="`$ ${toMoney(item.subtotal_est)}`" severity="info" class="text-xs" />
               </div>
               <Button icon="pi pi-trash" severity="danger" text rounded size="small" @click.stop="deleteItem(item)" />

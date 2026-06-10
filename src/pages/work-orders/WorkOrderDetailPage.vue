@@ -42,7 +42,7 @@
   </div>
 
   <!-- === ÍTEMS DE LA ORDEN (agrupa materiales + máquinas por ítem) === -->
-  <OrderItems :workOrderId="order.id" />
+  <OrderItems :workOrderId="order.id" @updated="load" />
 
   <!-- Comments -->
   <Card class="mb-3">
@@ -144,11 +144,9 @@
   <!-- Status Timeline -->
   <WorkOrderTimeline :workOrderId="order.id" />
 
-  <!-- Ítems de la orden (agrupa materiales + máquinas) -->
-  <OrderItems :workOrderId="order.id" />
 
   <!-- Pricing -->
-  <OrderPricing :workOrderId="order.id" class="mb-3" />
+  <OrderPricing :workOrderId="order.id" :key="'pricing-' + pricingKey" class="mb-3" />
 
   <!-- Payments -->
 
@@ -419,6 +417,7 @@ const STORAGE_BASE = import.meta.env.VITE_APP_URL || ''
 const order = ref<WorkOrderResponse | null>(null)
 const loading = ref(true)
 const activeTab = ref(0)
+const pricingKey = ref(0)
 
 // ─── Composable: Status Transitions ──────────────────────────────────
 const {
@@ -533,6 +532,7 @@ async function load() {
     toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar la orden' })
   } finally {
     loading.value = false
+    pricingKey.value++
   }
 }
 
