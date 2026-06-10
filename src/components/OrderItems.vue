@@ -12,10 +12,11 @@
       <Accordion :activeIndex="activeIndices" :multiple="true" @tab-open="onAccordionTabOpen" @tab-close="onAccordionTabClose" class="mb-3">
         <AccordionTab v-for="(item, idx) in items" :key="item.id">
           <template #header>
-            <div class="flex align-items-center justify-content-between w-full pr-2">
+            <!-- Mobile: stacked; Desktop: row -->
+            <div class="flex flex-column sm:flex-row sm:align-items-center sm:justify-content-between w-full pr-2 gap-1">
               <div class="flex align-items-center gap-2 text-sm font-medium text-color">
                 <i class="pi pi-box" />
-                <span v-if="item._editingDesc" class="flex align-items-center gap-1">
+                <span v-if="item._editingDesc" class="flex align-items-center gap-1 flex-wrap">
                   <InputText v-model="item.description" size="small" class="w-12rem" @keydown.enter="saveItemHeader(item)" @blur="saveItemHeader(item)" @click.stop />
                   <InputNumber v-model="item.quantity" :min="0" :maxFractionDigits="2" size="small" class="w-6rem" @blur="saveItemHeader(item)" @click.stop placeholder="Cant." />
                   <InputText v-model="item.unit" size="small" class="w-4rem" @blur="saveItemHeader(item)" @click.stop placeholder="Und." />
@@ -26,16 +27,16 @@
                 </span>
               </div>
               <div class="flex align-items-center gap-2 flex-shrink-0">
-                <span class="text-xs white-space-nowrap" :class="diffClass(item.estimated_total, item.actual_total)">
+                <span class="text-xs" :class="diffClass(item.estimated_total, item.actual_total)">
                   <i class="pi pi-calculator text-color-secondary mr-1"></i>
                   Est. <strong>${{ toMoney(item.estimated_total ?? 0) }}</strong>
                 </span>
                 <span class="text-color-secondary text-xs">|</span>
-                <span class="text-xs white-space-nowrap" :class="diffClass(item.estimated_total, item.actual_total)">
+                <span class="text-xs" :class="diffClass(item.estimated_total, item.actual_total)">
                   <i class="pi pi-check-circle text-primary mr-1"></i>
                   Real <strong>${{ toMoney(item.actual_total ?? 0) }}</strong>
                 </span>
-                <span v-if="item.actual_total && toFixedNum(item.actual_total,2) !== toFixedNum(item.estimated_total ?? 0,2)" class="text-xs ml-1" :class="diffClass(item.estimated_total, item.actual_total)">
+                <span v-if="item.actual_total && toFixedNum(item.actual_total,2) !== toFixedNum(item.estimated_total ?? 0,2)" class="text-xs" :class="diffClass(item.estimated_total, item.actual_total)">
                   ({{ diffSign(item.estimated_total, item.actual_total) }}${{ toMoney(diffAbs(item.estimated_total, item.actual_total)) }})
                 </span>
                 <Button icon="pi pi-trash" severity="danger" text rounded size="small" @click.stop="deleteItem(item)" />
