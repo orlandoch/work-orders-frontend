@@ -24,9 +24,22 @@
                   {{ item.description || 'Nuevo ítem' }}
                   <small class="text-color-secondary">(×{{ item.quantity || 1 }} {{ item.unit || 'u' }})</small>
                 </span>
-                <Tag :value="`$ ${toMoney(item.subtotal_est)}`" severity="info" class="text-xs" />
               </div>
-              <Button icon="pi pi-trash" severity="danger" text rounded size="small" @click.stop="deleteItem(item)" />
+              <div class="flex align-items-center gap-2 flex-shrink-0">
+                <span class="text-xs white-space-nowrap" :class="diffClass(item.estimated_total, item.actual_total)">
+                  <i class="pi pi-calculator text-color-secondary mr-1"></i>
+                  Est. <strong>${{ toMoney(item.estimated_total ?? 0) }}</strong>
+                </span>
+                <span class="text-color-secondary text-xs">|</span>
+                <span class="text-xs white-space-nowrap" :class="diffClass(item.estimated_total, item.actual_total)">
+                  <i class="pi pi-check-circle text-primary mr-1"></i>
+                  Real <strong>${{ toMoney(item.actual_total ?? 0) }}</strong>
+                </span>
+                <span v-if="item.actual_total && toFixedNum(item.actual_total,2) !== toFixedNum(item.estimated_total ?? 0,2)" class="text-xs ml-1" :class="diffClass(item.estimated_total, item.actual_total)">
+                  ({{ diffSign(item.estimated_total, item.actual_total) }}${{ toMoney(diffAbs(item.estimated_total, item.actual_total)) }})
+                </span>
+                <Button icon="pi pi-trash" severity="danger" text rounded size="small" @click.stop="deleteItem(item)" />
+              </div>
             </div>
           </template>
 
@@ -391,6 +404,31 @@ function toMoney(v: any): string {
 function toFixedNum(v: any, d: number = 2): string {
   return (Number(v) || 0).toFixed(d)
 }
+function diffClass(est: any, act: any): string {
+  const e = Number(est) || 0, a = Number(act) || 0
+  if (a > e) return 'text-orange-500'
+  if (a < e) return 'text-green-600'
+  return 'text-color-secondary'
+}
+function diffSign(est: any, act: any): string {
+  return (Number(act) || 0) > (Number(est) || 0) ? '+' : '-'
+}
+function diffAbs(est: any, act: any): string {
+  return toMoney(Math.abs((Number(act) || 0) - (Number(est) || 0)))
+}
+function recomputeItemTotals(item: any) {
+  let est = 0, act = 0
+  for (const m of (item._materials || [])) {
+    est += (Number(m.estimated_unit_cost) || 0) * (Number(m.estimated_quantity) || 0)
+    act += (Number(m.real_unit_cost) || Number(m.estimated_unit_cost) || 0) * (Number(m.real_quantity) || Number(m.estimated_quantity) || 0)
+  }
+  for (const m of (item._machine_usages || [])) {
+    est += (Number(m.cost_per_unit) || 0) * (Number(m.estimated_units) || 0)
+    act += (Number(m.cost_per_unit) || 0) * (Number(m.actual_units) || Number(m.estimated_units) || 0)
+  }
+  item.estimated_total = est
+  item.actual_total = act
+}
 
 // ── State ──
 const items = ref<any[]>([])
@@ -511,6 +549,7 @@ async function saveItemHeader(item: any) {
       unit: item.unit,
     })
     toast.add({ severity: 'success', summary: 'Guardado', detail: 'Cabecera del ítem actualizada', life: 2000 })
+    recomputeItemTotals(item)
     emit('updated')
   } catch (e: any) {
     const msg = e.response?.data?.message || e.message || 'Error al guardar'
@@ -589,6 +628,7 @@ async function addMaterial(item: any, productId: number) {
     })
     const newMat = { ...res.data?.data || res.data, product_name: product.name, product }
     item._materials.push(newMat)
+    recomputeItemTotals(item)
     // Refresh suggestion list after add
     matSuggestions.value[item.id] = (matSuggestions.value[item.id] || []).filter((s: any) => s.value !== productId)
     emit('updated')
@@ -608,6 +648,7 @@ async function saveMaterialInline(item: any, mat: any) {
       waste_quantity: mat.waste_quantity,
       notes: mat.notes,
     })
+    recomputeItemTotals(item)
     emit('updated')
     toast.add({ severity: 'success', summary: 'Material actualizado', life: 2000 })
   } catch (e: any) {
@@ -627,6 +668,7 @@ function deleteMaterial(item: any, mat: any) {
         await api.delete(`/work-orders/${props.workOrderId}/materials/${mat.id}`)
         const idx = item._materials.indexOf(mat)
         if (idx !== -1) item._materials.splice(idx, 1)
+        recomputeItemTotals(item)
         toast.add({ severity: 'success', summary: 'Material eliminado', life: 2000 })
         emit('updated')
       } catch (e: any) {
@@ -660,6 +702,7 @@ async function saveMatEdit() {
     if (targetMat) {
       Object.assign(targetMat, mat)
     }
+    recomputeItemTotals(matEditParentItem)
     matEditDialog.value = false
     toast.add({ severity: 'success', summary: 'Material actualizado', life: 2000 })
     emit('updated')
@@ -703,6 +746,7 @@ async function addMachine(item: any, machineId: number) {
     })
     const newMu = { ...res.data?.data || res.data, machine_name: machineObj.name, machine: machineObj }
     item._machine_usages.push(newMu)
+    recomputeItemTotals(item)
     machSuggestions.value[item.id] = (machSuggestions.value[item.id] || []).filter((s: any) => s.value !== machineId)
     emit('updated')
     toast.add({ severity: 'success', summary: 'Máquina agregada', detail: machineObj.name, life: 2000 })
@@ -720,6 +764,7 @@ async function saveMachineInline(item: any, mu: any) {
       actual_units: mu.actual_units,
       description: mu.description,
     })
+    recomputeItemTotals(item)
     emit('updated')
     toast.add({ severity: 'success', summary: 'Máquina actualizada', life: 2000 })
   } catch (e: any) {
@@ -739,6 +784,7 @@ function deleteMachine(item: any, mu: any) {
         await api.delete(`/work-orders/${props.workOrderId}/machine-usages/${mu.id}`)
         const idx = item._machine_usages.indexOf(mu)
         if (idx !== -1) item._machine_usages.splice(idx, 1)
+        recomputeItemTotals(item)
         toast.add({ severity: 'success', summary: 'Máquina eliminada', life: 2000 })
         emit('updated')
       } catch (e: any) {
@@ -768,6 +814,7 @@ async function saveMachEdit() {
     })
     const targetMu = machEditParentItem._machine_usages.find((m: any) => m.id === mu.id)
     if (targetMu) Object.assign(targetMu, mu)
+    recomputeItemTotals(machEditParentItem)
     machEditDialog.value = false
     toast.add({ severity: 'success', summary: 'Máquina actualizada', life: 2000 })
     emit('updated')
