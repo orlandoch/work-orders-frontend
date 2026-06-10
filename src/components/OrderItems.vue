@@ -697,6 +697,7 @@ async function addMachine(item: any, machineId: number) {
       machine_id: machineId,
       work_order_item_id: item.id,
       estimated_units: 1,
+      actual_units: 0,
     })
     const newMu = { ...res.data?.data || res.data, machine_name: machineObj.name, machine: machineObj }
     item._machine_usages.push(newMu)
